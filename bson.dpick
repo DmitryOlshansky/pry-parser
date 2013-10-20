@@ -1,0 +1,37 @@
+//BSN DataPicked format
+//external definitions: byte, int32, int64, double, bool
+root = Document
+
+Document = int32 len, (Element items)*, 0x0;
+Element = Double | String | Document | Array
+         | Binary | Undefined | ObjectId | Bool
+         | Utc | Null | Regex | DbPointer
+         | JavaScript | Symbol | JavaScriptScope
+         | Int | Timestamp | Int64 | MinKey | MaxKey;
+
+Double = 0x01, cstring key, double value;
+String = 0x02, cstring key, string value;
+Document = 0x03, cstring key, Document value;
+Array = 0x04, cstring key, Document value;
+Binary = 0x05, cstring key, binary value;
+Undefined = 0x06, cstring key;
+ObjectId = 0x07, cstring key, byte{12} value;
+Bool = 0x08, cstring key, bool value;
+Utc = 0x09, cstring key, int64;
+Null = 0x0A, cstring key;
+Regex = 0x0B, cstring key, (cstring, cstring) value;
+DbPointer = 0x0C, cstring key, (string, byte{12}) value;
+JavaScript = 0x0D, cstring key, string value;
+Symbol = 0x0E, cstring key, string value;
+JavaScriptScope = 0x0F, cstring key, code_w_s value;
+Int =  0x10, cstring key, int32 value;
+Timestamp = 0x11, cstring key, int64 value;
+Int64 = 0x12, cstring key, int64 value;
+MinKey = 0xFF, cstring key;
+MaxKey = 0x7F cstring key;
+
+//"primitives" 
+string = int32 !size, byte{size-1}, 0x0;
+cstring = [0x00-0xFF]*, 0x00
+binary = int32 !size, [0x0-0x05 0x80], byte{size};
+code_w_s = int32 !size, string code, document mapping;

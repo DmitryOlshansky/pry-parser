@@ -9,16 +9,16 @@ RootDeclaration : 'root' '=' DataExpr ';'
 ```
 
 ```
-Declaration : id '=' DataExpr ';'
+Declaration : Name '=' DataExpr ';'
 ```
 
-A single declaration defines a single layer of hierachical structure. A layer that contains no primary aliases (see later) is assumed to be annonymous and its entities are aliased directly to the id (if possible, otherwise it's a compile error).
+A single declaration defines a single layer of hierachical structure. A layer that contains no primary aliases (see later) is assumed to be annonymous and its entities are aliased directly to the name (if possible, otherwise it's a compile error).
 
 ```
 DataExpr : DataSequence
          : DataAlternative
 ```
-`DataExpr` defines a entity in a data format. 
+`DataExpr` defines an entity in a data format. 
 
 ```
 DataSequence : DataPiece (',' DataPiece)*
@@ -47,12 +47,13 @@ DataAtom : EntityExpr AliasExpr
 
 
 ```
-AliasExpr : ('!'? Name)? (':' AliasAtom*)?
+AliasExpr : '!'? Name? (':' AliasAtom*)?
 ```
 Name is considered primary alias - by this name it's accessible in the application later on. Note that using the same name in one layer of hierarchy means "accumulate". Thus 2 atoms aliased to the same name in one layer of declaration would yeild a collection of 2 elements.
 
-The '!' bit in AliasExpr indicates to alias the entity expresion to the name but to not keep the data. Without '!' it's automatically made a field in the declared element.
-This essentially makes it a deduced vairable just like the ones `AliasAtom` defines.
+The '!' bit in AliasExpr indicates to alias the entity expresion to the name but to not keep the data. Without '!' it's automatically made a field in the declared element iff EntityExp has external entries or contains primary aliases.
+
+With name this essentially makes it a deduced vairable just like the ones `AliasAtom` defines.
 
 ```
 AliasAtom : Expr '->' Name
