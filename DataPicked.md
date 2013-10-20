@@ -12,6 +12,8 @@ RootDeclaration : 'root' '=' DataExpr ';'
 Declaration : id '=' DataExpr ';'
 ```
 
+A single declaration defines a single layer of hierachical structure. A layer that contains no primary aliases (see later) is assumed to be annonymous and its entities are aliased directly to the id (if possible, otherwise it's a compile error).
+
 ```
 DataExpr : DataSequence
          : DataAlternative
@@ -24,7 +26,7 @@ DataSequence : DataPiece (',' DataPiece)*
 `DataSequence` by default is going to be a tuple of whatever pieces that constituite it. A single element tuple is aliased directly to its single member.
 
 ```
-DataAlternative : DataPiece '|' DataPiece ('|' DataPiece )*
+DataAlternative : DataPiece ('|' DataPiece )+
 ```
 `DataAlternative` is a taged union of its contents. Sequence is prefered so a single `DataPiece` is a `DataSequence`.
 
@@ -34,16 +36,20 @@ DataPiece : DataAtom
           : DataAtom '?'
           : DataAtom '{' Expr (',' Expr )? '}'
 ```
-Depending on `DataAtom` the piece becomes a single item, a collection, a Nullable, or a fixed size collection. Pieces form level of hierarchical entity that a complete declaration defines.
+Depending on `DataAtom` the piece becomes a single item, a collection, a Nullable, or a fixed size collection. Pieces form level of a hierarchical entity that a complete declaration defines.
 
 ```
 DataAtom : EntityExpr AliasExpr 
          : '(' DataExpr ')' AliasExpr
 ```
 
+`DataAtom` may be a parenthesized `DataExpr`. In such a case alias supplied ties the whole of DataExpr as a single entity - this is second way to introduce another layer of hierarchy. If parentisized expression is not aliased then it's assumed to be "merged" with the same layer it was on.
+
+
 ```
 AliasExpr : ('!'? Name)? (':' AliasAtom*)?
 ```
+Name is considered primary alias - by this name it's accessible in the application later on. Note that using the same name in one layer of hierarchy means "accumulate". Thus 2 atoms aliased to the same name in one layer of declaration would yeild a collection of 2 elements.
 
 The '!' bit in AliasExpr indicates to alias the entity expresion to the name but to not keep the data. Without '!' it's automatically made a field in the declared element.
 This essentially makes it a deduced vairable just like the ones `AliasAtom` defines.

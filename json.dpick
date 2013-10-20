@@ -1,0 +1,15 @@
+//JSON DataPicked spec
+//needs skip white-space/control
+//externally defined: JSString, double, string, bool, null
+
+//unnamed type --> eponymous, only
+//with a single type in a declaration (else annonymous entities are dropped)
+JSValue = double | JSString | JSArray | JSObject | bool | null;
+JSField = string id, ":", JSValue value;
+//star makes it container always
+//star allows only one common type - make algebraic types by hand (JSValue)
+JSArray = "[", JSValue, (",", JSValue)*, "]";
+//using same name means - "accumulate in", turns field into container if required
+JSObject = "{", JSField fields, (",", JSField fields)*, "}";
+//document root, at least 1 object
+root = JSObject, (",", JSObject)*;
