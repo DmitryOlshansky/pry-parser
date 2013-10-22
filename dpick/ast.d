@@ -1,7 +1,21 @@
 module dpick.ast;
 
+abstract class Ast
+{
+@safe pure:
+    abstract bool accept(Walker walker);    
+}
+
+mixin template Visitable()
+{
+    override bool accept(Walker w)
+    {
+        return w.visit(this);
+    }
+}
+
 //
-class DataExpr
+class DataExpr : Ast
 {
 @safe pure:
     DataPiece[] items;
@@ -18,6 +32,7 @@ class DataAlt : DataExpr
     {
         super(pieces);
     }
+    mixin Visitable;
 }
 
 class DataSeq : DataExpr
@@ -27,9 +42,10 @@ class DataSeq : DataExpr
     {
         super(pieces);
     }
+    mixin Visitable;
 }
 
-class DataPiece
+class DataPiece : Ast
 {
 @safe pure:
     DataAtom atom;
@@ -40,15 +56,16 @@ class DataPiece
         low = l;
         high = h;
     }
+    mixin Visitable;
 }
 
-class DataAtom
+class DataAtom : Ast
 {
 @safe pure:
-    AliasExpr aliases;
+    AliasExpr aliasExpr;
     this(AliasExpr a)
     {
-        aliases = a;
+        aliasExpr = a;
     }
 }
 
@@ -61,6 +78,7 @@ class EntityAtom : DataAtom
         super(a);
         entity = e;
     }
+    mixin Visitable;
 }
 
 class ExprAtom : DataAtom
@@ -72,14 +90,105 @@ class ExprAtom : DataAtom
         super(a);
         expr = e;        
     }
+    mixin Visitable;
 }
 
-class AliasExpr
+class AliasExpr : Ast
+{
+@safe pure:
+    bool ignorable;
+    string primary;
+    AliasAtom[] others;
+    this(bool ignore, string primeId, AliasAtom[] a)
+    {
+        ignorable = ignore;
+        primary = primeId;
+        others = a;
+    }
+    mixin Visitable;
+}
+
+class AliasAtom : Ast
+{
+@safe pure:
+    string id;
+    Expr expr;    
+    this(string name, Expr e)
+    {
+        id = name;
+        expr = e;
+    }
+    mixin Visitable;
+}
+
+class EntityExpr : Ast {}
+
+class NameExpr : EntityExpr
+{
+@safe pure:
+    string id;
+    this(string name)
+    {
+        id = name;
+    }
+    mixin Visitable;
+}
+
+class BytePattern : EntityExpr
+{
+@safe pure:
+    ByteClass[] pattern;
+    this(ByteClass[] pat)
+    {
+        pattern = pat;
+    }
+    mixin Visitable;
+}
+
+class StringPattern : EntityExpr
+{
+@safe pure:
+    CharClass[] pattern;
+    this(CharClass[] pat)
+    {
+        pattern = pat;
+    }
+    mixin Visitable;   
+}
+
+struct ByteClass
 {
 
 }
 
-class EntityExpr
+struct CharClass
 {
 
+}
+
+class Expr : Ast
+{
+@safe pure:    
+    mixin Visitable;
+}
+
+string simpleVistorFor(T...)()
+{
+    static if(T.length != 0)
+    {
+        return `bool visit(`~T[0].stringof~` arg){ return true; }`
+        ~ simpleVistorFor!(T[1..$]);
+    }
+    else
+        return "";
+}
+
+class Walker
+{
+@safe pure:
+    mixin(simpleVistorFor!(
+        Expr, StringPattern, BytePattern, NameExpr,
+        AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
+        DataPiece, DataSeq, DataAlt
+    ));
 }
