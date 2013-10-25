@@ -1,4 +1,10 @@
 DataPicked grammar itself in EBNF-like notation.
+ASCII whitespace is ignored, Unicode one is disallowed.
+Plus the comments are C-style, line-only 
+```
+// This is a comment
+```
+May start at any place in the text.
 
 ```
 DataPickedSchema : Declaration* RootDeclaration Declaration*
@@ -72,7 +78,7 @@ StringPattern : '"' CharClass+ '"'
 
 ```
 CharClass : [^\\\[\]]
-          : '\' [\\\[\]]
+          : '\' [\\\[\]\"]
           : '[' '^'? RangeExpr+ ']'
 ```
 

@@ -7,10 +7,11 @@ import std.algorithm, std.range, std.exception, std.ascii, std.typecons;
 class ParseException : Exception
 {
 @safe pure:
-    this(int line, string msg)
+    this(int line, string suffix, string msg)
     {
         import std.conv;
-        super(to!string(line)~":"~msg);
+        auto context = suffix.length > 8 ? suffix[0..8] ~ "..." : suffix;
+        super("Line #"~to!string(line)~" before `"~context~"`: "~msg);
     }
 }
 
@@ -184,8 +185,49 @@ private struct Parser
     //StringPattern : '"' CharClass+ '"'
     //1st quote already matched
     StringPattern parseStringPattern()
-    {        
-        return new StringPattern(null);
+    {
+        CharClass[] pat;
+        //CharClass : [^\\\[\]]
+        //          : '\' [\\\[\]]
+        //          : '[' '^'? RangeExpr+ ']'
+    OuterLoop:
+        for(;;)
+        {   
+            //TODO: must handle full Unicode with std.uni stuff
+            //once it is CTFE-able
+            auto ch = input.front;
+            switch(ch)
+            {
+                case '[':
+                    auto mask = new CharMask;
+                    do
+                    {
+                        auto pair = parseRangeExpr();
+                        mask.mark(pair[0], pair[1]);
+                    }while(!match("]"));
+                    pat ~= mask;
+                    break;
+                case '\\':
+                    input.popFront();
+                    if(input.empty)
+                        error("unterminated escape sequence");
+                    ch = input.front;
+                    if(ch != '\\' && ch != '[' && ch != ']' && ch !='"')
+                        error("incorrect escape sequence");                    
+                    break;
+                case '"':
+                    input.popFront();
+                    break OuterLoop;
+                default:
+                    //TODO: dchar --> many Char's
+                    pat ~= new Char(cast(char)ch);
+                    break;
+            }
+            input.popFront();
+            if(input.empty)
+                error("unterminated string pattern");
+        }
+        return new StringPattern(pat);
     }
 
     //BytePattern : ByteClass+
@@ -346,6 +388,16 @@ private struct Parser
                 failOnEof && error("unexpected end of input");
                 break;
             }
+
+            //line comment
+            if(input.skipOver("//"))
+            {
+                input = find(input, '\n');
+                if(!input.empty) 
+                    input.popFront();
+                line++;
+                continue;
+            }
             auto f = input.front;
             if(!isWhite(f))
                 break;
@@ -363,7 +415,7 @@ private struct Parser
 
     void error(string msg)
     {
-        throw new ParseException(line, msg);
+        throw new ParseException(line, input, msg);
     }
 }
 
@@ -372,6 +424,7 @@ unittest
     enum tests = (){
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
+        d = Parser(import("json.dpick")).parse();
         return d;
     };
     enum ctTests = tests();
