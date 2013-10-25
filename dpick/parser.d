@@ -2,7 +2,7 @@ module dpick.parser;
 
 import dpick.ast;
 
-import std.algorithm, std.range, std.exception, std.ascii;
+import std.algorithm, std.range, std.exception, std.ascii, std.typecons;
 
 class ParseException : Exception
 {
@@ -34,7 +34,7 @@ private struct Parser
         while(!input.empty)
         {            
             parseDeclaration();
-            skipWs();
+            skipWs(false); //may hit EOF
         }
         if("root" !in decls)
             error("no 'root' entity defined");
@@ -108,9 +108,13 @@ private struct Parser
         }
         else if(match("{"))
         {
-
+            Expr e = parseExpression(), e2;
+            if(match(","))
+                e2 = parseExpression();            
+            check("}");
+            return new DataPiece(a, e, e2 ? e2 : e);
         }
-        return new DataPiece(a, low, high);
+        return new DataPiece(a, new Number(low), new Number(high));
     }
 
     //DataAtom : EntityExpr AliasExpr 
@@ -134,7 +138,6 @@ private struct Parser
         bool ignore = match('!');
         string name = null;
         skipWs();
-        checkNotEnd();
         if(isAlpha(input.front))
             name = parseId();
         AliasAtom[] aliases = null;
@@ -143,7 +146,6 @@ private struct Parser
             for(;;)
             {
                 skipWs();
-                checkNotEnd();
                 if(!isAlpha(input.front))
                     break;
                 aliases ~= parseAliasAtom();
@@ -167,12 +169,11 @@ private struct Parser
     EntityExpr parseEntityExpr()
     {
         skipWs();
-        checkNotEnd();
         if(match('\"'))
         {
             return parseStringPattern();
         }
-        if(isDigit(input.front))
+        if(input.front == '[' || isDigit(input.front))
             return parseBytePattern();
         if(isAlpha(input.front))
             return new NameExpr(parseId());
@@ -183,27 +184,63 @@ private struct Parser
     //StringPattern : '"' CharClass+ '"'
     //1st quote already matched
     StringPattern parseStringPattern()
-    {
+    {        
         return new StringPattern(null);
     }
 
     //BytePattern : ByteClass+
     BytePattern parseBytePattern()
     {
+        ByteClass[] pat = null;
+        for(;;)
+        {   
+            skipWs();
+            if(match("["))
+            {
+                auto mask = new ByteMask;
+                do
+                {
+                    auto pair = parseRangeExpr();
+                    mask.mark(pair[0], pair[1]);
+                }while(!match("]"));
+                pat ~= mask;
+                continue;
+            }
+            if(isDigit(input.front))
+            {
+                int v = parseNum();
+                pat ~= new Byte(cast(ubyte)v);
+                continue;
+            }
+            break;
+        }
         return new BytePattern(null);
     }
 
     //TODO: full expression tree, use operator precedence grammar
     Expr parseExpression()
     {
-        return new Expr();
+        //just numbers for now
+        return new Number(parseNum());
+    }
+
+    //RangeExpr : Number
+    //          : Number '-' Number
+    auto parseRangeExpr()
+    {
+        int first = parseNum();
+        int second = first + 1;
+        if(match('-'))
+        {
+            second = parseNum();
+        }
+        return tuple(first, second);
     }
 
     //Name : [a-zA-Z_][a-zA-Z_0-9]*
     string parseId()
     {
         skipWs();
-        checkNotEnd();
         auto save = input; 
         if(!isAlpha(input.front))
             error("expected alphabetic character");
@@ -217,7 +254,6 @@ private struct Parser
     int parseNum()
     {
         skipWs();
-        checkNotEnd();
         if(!isDigit(input.front))
             error("expected digit character");        
         int val = input.front - '0';
@@ -293,13 +329,7 @@ private struct Parser
             return true;
         }
         return false;
-    }
-
-    void checkNotEnd()
-    {
-        if(input.empty)
-            error("unexpected end of input");
-    }
+    }    
 
     void check(const(char)[] piece...)
     {
@@ -307,10 +337,15 @@ private struct Parser
             error("expected: " ~ piece.idup);
     }
 
-    void skipWs()
+    void skipWs(bool failOnEof=true)
     {
         for(;;)
         {
+            if(input.empty)
+            {
+                failOnEof && error("unexpected end of input");
+                break;
+            }
             auto f = input.front;
             if(!isWhite(f))
                 break;
@@ -330,4 +365,15 @@ private struct Parser
     {
         throw new ParseException(line, msg);
     }
+}
+
+unittest
+{
+    enum tests = (){
+        auto d = Parser("root = 0x0 ;").parse();
+        assert("root" in d);
+        return d;
+    };
+    enum ctTests = tests();
+    tests();
 }

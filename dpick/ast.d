@@ -3,12 +3,12 @@ module dpick.ast;
 abstract class Ast
 {
 @safe pure:
-    abstract bool accept(Walker walker);    
+    abstract void accept(Visitor walker);    
 }
 
 mixin template Visitable()
 {
-    override bool accept(Walker w)
+    override void accept(Visitor w)
     {
         return w.visit(this);
     }
@@ -49,8 +49,8 @@ class DataPiece : Ast
 {
 @safe pure:
     DataAtom atom;
-    int low, high;
-    this(DataAtom a, int l, int h)
+    Expr low, high;
+    this(DataAtom a, Expr l, Expr h)
     {
         atom = a;
         low = l;
@@ -156,39 +156,109 @@ class StringPattern : EntityExpr
     mixin Visitable;   
 }
 
-struct ByteClass
+struct BitMask(size_t bitSize)
 {
+@safe pure:
+    uint[(1<<bitSize)/32] mask;
 
+    void mark(int start, int end)
+    {
+        //TODO: optimize, e.g. can mark a word at at time
+        for(int idx = start; idx<end; idx++)
+        {
+            mask[idx/32] |= 1<<(idx%32);
+        }
+    }
+
+    uint opIndex(uint idx)
+    {
+        return mask[idx/32] & 1<<idx;
+    }
+
+    void invert()
+    {
+        foreach(ref w; mask)
+            w = ~w;
+    }
 }
 
-struct CharClass
-{
+class ByteClass : Ast{}
 
+class ByteMask : ByteClass
+{
+@safe pure:
+    BitMask!8 mask;
+    alias mask this;
+    mixin Visitable;
+}
+
+class Byte : ByteClass
+{
+@safe pure:    
+    ubyte value;
+    this(ubyte val)
+    {
+        value  = val;
+    }
+    mixin Visitable;
+}
+
+class CharClass : Ast{}
+
+class CharMask : CharClass
+{
+@safe pure:
+    //TODO: + set of char for non-ascii part of UTF-8
+    BitMask!7 ascii;
+    alias ascii this;
+    mixin Visitable;
+}
+
+class Char : CharClass
+{
+@safe pure:     
+    char ch;
+    this(char c)
+    {
+        ch = c;
+    }
+    mixin Visitable;
 }
 
 class Expr : Ast
 {
-@safe pure:    
-    mixin Visitable;
+
 }
 
-string simpleVistorFor(T...)()
+class Number : Expr
+{
+@safe pure:
+    int times;
+    this(int t)
+    {
+        times = t;
+    }
+    mixin Visitable;    
+}
+
+string nullVistorFor(T...)()
 {
     static if(T.length != 0)
     {
-        return `bool visit(`~T[0].stringof~` arg){ return true; }`
-        ~ simpleVistorFor!(T[1..$]);
+        return `void visit(`~T[0].stringof~` arg){ }`
+        ~ nullVistorFor!(T[1..$]);
     }
     else
         return "";
 }
 
-class Walker
+class Visitor
 {
 @safe pure:
-    mixin(simpleVistorFor!(
+    mixin(nullVistorFor!(
         Expr, StringPattern, BytePattern, NameExpr,
         AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
-        DataPiece, DataSeq, DataAlt
+        DataPiece, DataSeq, DataAlt,
+        ByteMask, Byte, CharMask, Char
     ));
 }
