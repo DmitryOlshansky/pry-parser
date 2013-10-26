@@ -233,12 +233,23 @@ class Expr : Ast
 class Number : Expr
 {
 @safe pure:
-    int times;
-    this(int t)
+    int value;
+    this(int v)
     {
-        times = t;
+        value = v;
     }
     mixin Visitable;    
+}
+
+class Variable: Expr
+{
+@safe pure:
+    string id;
+    this(string id)
+    {
+        this.id = id;
+    }
+    mixin Visitable;
 }
 
 string nullVistorFor(T...)()

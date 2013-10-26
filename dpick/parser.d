@@ -2,7 +2,21 @@ module dpick.parser;
 
 import dpick.ast;
 
-import std.algorithm, std.range, std.exception, std.ascii, std.typecons;
+import std.algorithm, std.range, std.exception, std.typecons;
+import std.typetuple;
+
+alias Seq = TypeTuple;
+
+static import ascii = std.ascii;
+
+pure @safe nothrow bool isAlpha()(dchar c)
+{
+    return ascii.isAlpha(c) || c == '_';
+}
+
+alias isDigit = ascii.isDigit;
+alias isWhite = ascii.isWhite;
+alias isHexDigit = ascii.isHexDigit;
 
 class ParseException : Exception
 {
@@ -10,7 +24,7 @@ class ParseException : Exception
     this(int line, string suffix, string msg)
     {
         import std.conv;
-        auto context = suffix.length > 8 ? suffix[0..8] ~ "..." : suffix;
+        auto context = suffix.length > 16 ? suffix[0..16] ~ "..." : suffix;
         super("Line #"~to!string(line)~" before `"~context~"`: "~msg);
     }
 }
@@ -125,8 +139,8 @@ private struct Parser
         if(match('('))
         {
             DataExpr expr = parseDataExpr();
-            auto ret =  new ExprAtom(expr, parseAliasExpr());
             check(')');
+            auto ret =  new ExprAtom(expr, parseAliasExpr());            
             return ret;
         }        
         EntityExpr expr = parseEntityExpr();        
@@ -259,11 +273,103 @@ private struct Parser
         return new BytePattern(null);
     }
 
+    struct Op {
+        string tok; //slice of str that matches
+        //-1 - end paren, 0 - start paren 
+        //else higher - greater priority
+        int  priority;
+    }
+    enum TERMINATOR = 1;
+    alias operators = Seq!(
+        Op("*", 30), Op("/", 30), Op("%", 30),
+        Op("+", 20), Op("-", 20),
+        Op("<<", 10), Op(">>", 10),
+        Op("<", 8), Op(">", 8),
+        //equality? Op("==", 7)
+        Op("&", 5),
+        Op("^", 4), 
+        Op("|", 3),
+        //delimeters these terminate the expresion
+        Op("->", TERMINATOR), Op("}", TERMINATOR), Op(",", TERMINATOR) 
+    );
+    static immutable opTable = [ operators ];
+
+    Op matchOp()
+    {
+        auto ch = input.front;
+        switch(ch)
+        {
+            foreach(startIdx, op; operators)
+            {
+                //if haven't seen another operator starting on this token
+                //TODO: can simplify this by preparing the list beforehand
+                static if (!opTable[0..startIdx].canFind!"a.tok[0] == b.tok[0]"(op))
+                {
+        case  op.tok[0]:
+                    //maximal munch - try all longer operators first
+                    input.popFront();
+                    if(input.empty)
+                        error("unterminated expression");
+                    foreach (idx, op2; operators)
+                    {
+                        static if(op2.tok.length > 1 && op2.tok[0] == op.tok[0])
+                        {
+                            if(input.skipOver(op2.tok[1..$]))
+                                return operators[idx];
+                        }
+                    }
+                    foreach(idx, op2; operators)
+                    {
+                        static if(op2.tok.length == 1 && op2.tok[0] == op.tok[0])
+                        {
+                            return operators[idx];
+                        }
+                    }
+                    goto default;
+                }
+            }
+        default:
+            error("unrecognized operator");
+        }
+        assert(0);
+    }
+
     //TODO: full expression tree, use operator precedence grammar
     Expr parseExpression()
-    {
-        //just numbers for now
-        return new Number(parseNum());
+    {        
+        Op[] opStack;
+        Expr[] valStack;
+        void pushOp(Op op)
+        {
+
+        }
+        void pushVar(Expr val)
+        {
+            valStack ~= val;
+        }
+        for(;;)
+        {
+            skipWs();
+            auto ch = input.front;
+            if(isDigit(ch))
+                pushVar(new Number(parseNum()));
+            else if(isAlpha(ch))
+                pushVar(new Variable(parseId()));
+            else
+            {
+                auto save = input;
+                Op op = matchOp();
+                if(op.priority == TERMINATOR)
+                {
+                    //it's not our job to check if it's the right kind
+                    input = save; //hence rollback
+                    break;
+                }
+                pushOp(op);
+            }                
+        }
+        //TODO: squash the stack and yeild final result
+        return valStack.front;
     }
 
     //RangeExpr : Number
@@ -425,8 +531,9 @@ unittest
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
         d = Parser(import("json.dpick")).parse();
+        d = Parser(import("bson.dpick")).parse();
         return d;
     };
-    enum ctTests = tests();
+    //enum ctTests = tests();
     tests();
 }
