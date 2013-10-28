@@ -230,6 +230,33 @@ class Expr : Ast
 
 }
 
+class UnExpr : Expr
+{
+@safe pure:
+    string op;
+    Expr arg;
+    this(Expr e, string opTok)
+    {
+        op = opTok;
+        arg = e;
+    }
+    mixin Visitable;
+}
+
+class BinExpr : Expr
+{
+@safe pure:
+    string op;
+    Expr left, right;
+    this(Expr e, string opTok, Expr e2)
+    {
+        left = e;
+        op = opTok;
+        right = e2;
+    }
+    mixin Visitable;
+}
+
 class Number : Expr
 {
 @safe pure:

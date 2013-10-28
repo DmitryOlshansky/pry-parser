@@ -278,19 +278,26 @@ private struct Parser
         //-1 - end paren, 0 - start paren 
         //else higher - greater priority
         int  priority;
+        int  arity;
     }
-    enum TERMINATOR = 1;
+    static auto binOp(string tok, int priority)
+    {
+        return Op(tok, priority, 2);
+    }
+    enum TERMINATOR = 1, OPEN = 0, CLOSE = -1;
     alias operators = Seq!(
-        Op("*", 30), Op("/", 30), Op("%", 30),
-        Op("+", 20), Op("-", 20),
-        Op("<<", 10), Op(">>", 10),
-        Op("<", 8), Op(">", 8),
-        //equality? Op("==", 7)
-        Op("&", 5),
-        Op("^", 4), 
-        Op("|", 3),
+        binOp("*", 30), binOp("/", 30), binOp("%", 30),
+        binOp("+", 20), binOp("-", 20),
+        binOp("<<", 10), binOp(">>", 10),
+        binOp("<", 8), binOp(">", 8),
+        //equality? binOp("==", 7)
+        binOp("&", 5),
+        binOp("^", 4), 
+        binOp("|", 3),
+        binOp(".", 2),
         //delimeters these terminate the expresion
-        Op("->", TERMINATOR), Op("}", TERMINATOR), Op(",", TERMINATOR) 
+        Op("->", TERMINATOR, 0), Op("}", TERMINATOR, 0), Op(",", TERMINATOR, 0),
+        Op("(", OPEN, 0xBEAF), Op(")", CLOSE, 0xBEAF)
     );
     static immutable opTable = [ operators ];
 
@@ -334,18 +341,71 @@ private struct Parser
         assert(0);
     }
 
+    struct Stack(T)
+    {
+    @safe pure:
+        T[] data;
+        @property bool empty(){ return data.empty; }
+
+        @property size_t length(){ return data.length; }
+
+        void push(T val){ data ~= val;  }
+        
+        T pop()
+        {
+            assert(!empty);
+            auto val = data[$ - 1];
+            data = data[0 .. $ - 1];
+            return val;
+        }
+
+        @property ref T top()
+        {
+            assert(!empty);
+            return data[$ - 1]; 
+        }
+    }
+
     //TODO: full expression tree, use operator precedence grammar
     Expr parseExpression()
-    {        
-        Op[] opStack;
-        Expr[] valStack;
+    {    
+        Stack!Op opStack;
+        Stack!Expr valStack;
+        void collapseStackUntil(bool delegate(Op )@safe pred)
+        {
+            while(!opStack.empty && pred(opStack.top))
+            {
+                Op op = opStack.pop();
+                if(op.arity == 1)
+                    valStack.top = new UnExpr(valStack.top, op.tok);
+                else if(op.arity == 2)
+                {
+                    Expr e = valStack.pop();
+                    valStack.top = new BinExpr(valStack.top, op.tok, e);
+                }
+            }
+        }
         void pushOp(Op op)
         {
-
+            if(op.priority == CLOSE)
+            {
+                collapseStackUntil(arg => arg.priority == OPEN);
+                if(opStack.empty)
+                    error("unmatched '(' in expression");
+                assert(opStack.top.priority == OPEN);
+                opStack.pop();
+            }
+            else if(op.priority == OPEN)
+                opStack.push(op);
+            else
+            {
+                collapseStackUntil(arg => arg.priority >= op.priority);
+            }
+            opStack.push(op);
         }
         void pushVar(Expr val)
         {
-            valStack ~= val;
+            valStack.push(val);
         }
         for(;;)
         {
@@ -369,7 +429,8 @@ private struct Parser
             }                
         }
         //TODO: squash the stack and yeild final result
-        return valStack.front;
+        collapseStackUntil(op => true);
+        return valStack.top;
     }
 
     //RangeExpr : Number
@@ -527,13 +588,15 @@ private struct Parser
 
 unittest
 {
+    import std.stdio;
     enum tests = (){
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
         d = Parser(import("json.dpick")).parse();
-        d = Parser(import("bson.dpick")).parse();
+        d = Parser(import("bson.dpick")).parse();        
         return d;
     };
     //enum ctTests = tests();
     tests();
+    writeln(Parser("id*2+3, ").parseExpression());
 }
