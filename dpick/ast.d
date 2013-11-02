@@ -1,14 +1,15 @@
 module dpick.ast;
 
+import std.typetuple, std.traits;
+
 abstract class Ast
 {
-@safe pure:
-    abstract void accept(Visitor walker);    
+    abstract void accept(const Visitor walker);    
 }
 
 mixin template Visitable()
 {
-    override void accept(Visitor w)
+    override void accept(const Visitor w)
     {
         return w.visit(this);
     }
@@ -27,26 +28,27 @@ class DataExpr : Ast
 
 class DataAlt : DataExpr
 {
+    mixin Visitable;
 @safe pure:
     this(DataPiece[] pieces)
     {
         super(pieces);
-    }
-    mixin Visitable;
+    }    
 }
 
 class DataSeq : DataExpr
 {
+    mixin Visitable;
 @safe pure:    
     this(DataPiece[] pieces)
     {
         super(pieces);
-    }
-    mixin Visitable;
+    }    
 }
 
 class DataPiece : Ast
 {
+    mixin Visitable;
 @safe pure:
     DataAtom atom;
     Expr low, high;
@@ -56,7 +58,6 @@ class DataPiece : Ast
         low = l;
         high = h;
     }
-    mixin Visitable;
 }
 
 class DataAtom : Ast
@@ -71,6 +72,7 @@ class DataAtom : Ast
 
 class EntityAtom : DataAtom
 {
+    mixin Visitable;
 @safe pure:
     EntityExpr entity;
     this(EntityExpr e, AliasExpr a)
@@ -78,11 +80,11 @@ class EntityAtom : DataAtom
         super(a);
         entity = e;
     }
-    mixin Visitable;
 }
 
 class ExprAtom : DataAtom
 {
+    mixin Visitable;
 @safe pure:
     DataExpr expr;
     this(DataExpr e, AliasExpr a)
@@ -90,11 +92,11 @@ class ExprAtom : DataAtom
         super(a);
         expr = e;        
     }
-    mixin Visitable;
 }
 
 class AliasExpr : Ast
 {
+    mixin Visitable;
 @safe pure:
     bool ignorable;
     string primary;
@@ -104,12 +106,12 @@ class AliasExpr : Ast
         ignorable = ignore;
         primary = primeId;
         others = a;
-    }
-    mixin Visitable;
+    }    
 }
 
 class AliasAtom : Ast
 {
+    mixin Visitable;
 @safe pure:
     string id;
     Expr expr;    
@@ -117,43 +119,42 @@ class AliasAtom : Ast
     {
         id = name;
         expr = e;
-    }
-    mixin Visitable;
+    }    
 }
 
 class EntityExpr : Ast {}
 
 class NameExpr : EntityExpr
 {
+    mixin Visitable;
 @safe pure:
     string id;
     this(string name)
     {
         id = name;
     }
-    mixin Visitable;
 }
 
 class BytePattern : EntityExpr
 {
+    mixin Visitable;
 @safe pure:
     ByteClass[] pattern;
     this(ByteClass[] pat)
     {
         pattern = pat;
     }
-    mixin Visitable;
 }
 
 class StringPattern : EntityExpr
 {
+    mixin Visitable;
 @safe pure:
     CharClass[] pattern;
     this(CharClass[] pat)
     {
         pattern = pat;
     }
-    mixin Visitable;   
 }
 
 struct BitMask(size_t bitSize)
@@ -186,43 +187,43 @@ class ByteClass : Ast{}
 
 class ByteMask : ByteClass
 {
+    mixin Visitable;
 @safe pure:
     BitMask!8 mask;
     alias mask this;
-    mixin Visitable;
 }
 
 class Byte : ByteClass
 {
+    mixin Visitable;
 @safe pure:    
     ubyte value;
     this(ubyte val)
     {
         value  = val;
     }
-    mixin Visitable;
 }
 
 class CharClass : Ast{}
 
 class CharMask : CharClass
 {
+    mixin Visitable;
 @safe pure:
     //TODO: + set of char for non-ascii part of UTF-8
     BitMask!7 ascii;
     alias ascii this;
-    mixin Visitable;
 }
 
 class Char : CharClass
 {
+    mixin Visitable;
 @safe pure:     
     char ch;
     this(char c)
     {
         ch = c;
     }
-    mixin Visitable;
 }
 
 class Expr : Ast
@@ -232,6 +233,7 @@ class Expr : Ast
 
 class UnExpr : Expr
 {
+    mixin Visitable;
 @safe pure:
     string op;
     Expr arg;
@@ -240,11 +242,11 @@ class UnExpr : Expr
         op = opTok;
         arg = e;
     }
-    mixin Visitable;
 }
 
 class BinExpr : Expr
 {
+    mixin Visitable;
 @safe pure:
     string op;
     Expr left, right;
@@ -254,36 +256,35 @@ class BinExpr : Expr
         op = opTok;
         right = e2;
     }
-    mixin Visitable;
 }
 
 class Number : Expr
 {
+    mixin Visitable;
 @safe pure:
     int value;
     this(int v)
     {
         value = v;
     }
-    mixin Visitable;    
 }
 
 class Variable: Expr
 {
+    mixin Visitable;
 @safe pure:
     string id;
     this(string id)
     {
         this.id = id;
     }
-    mixin Visitable;
 }
 
 string nullVistorFor(T...)()
 {
     static if(T.length != 0)
     {
-        return `void visit(`~T[0].stringof~` arg){ }`
+        return `void visit(`~T[0].stringof~` arg)const{ }`
         ~ nullVistorFor!(T[1..$]);
     }
     else
@@ -292,11 +293,60 @@ string nullVistorFor(T...)()
 
 class Visitor
 {
-@safe pure:
     mixin(nullVistorFor!(
         Expr, StringPattern, BytePattern, NameExpr,
         AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
         DataPiece, DataSeq, DataAlt,
         ByteMask, Byte, CharMask, Char
     ));
+}
+
+enum isUnary(alias Fn) = arity!Fn == 1;
+
+private string generateAdhocVisitor(Types...)(bool withRet)
+{
+    import std.conv;
+    string ret;
+    foreach(i, t; Types)
+    {
+        ret ~= `override void visit(`~t.stringof~` arg)const{`
+            ~(withRet ? `ret = ` : ``)~`Fns[`
+            ~to!string(i)~`](arg); }`;
+    }
+    return ret;
+}
+
+auto match(Fns...)(Ast node)
+    if(allSatisfy!(isCallable, Fns) && allSatisfy!(isUnary, Fns))
+{
+    import std.typecons;
+    alias Args = staticMap!(ParameterTypeTuple, Fns);
+    alias Rets = staticMap!(ReturnType, Fns);
+    static assert(NoDuplicates!Rets.length == 1, "return types must be the same");
+    enum hasReturn = !is(Rets[0] == void);
+    static if(hasReturn)
+        Rets[0] ret;
+    class Matcher : Visitor {
+        mixin(generateAdhocVisitor!(Args)(hasReturn));
+    };
+    //@@@BUG@@@ should be able to be static but segfaults at R-T
+    //@@@BUG@@@ should be able to be scoped!Matcher but segfaults at R-T
+    Matcher m = new Matcher();
+    node.accept(m);
+    static if(hasReturn)
+        return ret;
+}
+
+unittest
+{
+    import std.stdio;
+    auto n = new NameExpr("Name");
+    auto e = new Byte(90);
+
+    alias M = match!(
+        (NameExpr n) @trusted => 0,
+        (Byte b) @trusted => 1
+    );
+    assert(M(n) == 0);
+    assert(M(e) == 1);
 }
