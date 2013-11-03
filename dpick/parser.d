@@ -588,15 +588,21 @@ private struct Parser
 
 unittest
 {
-    import std.stdio;
+    import std.stdio, std.conv;
     enum tests = (){
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
         d = Parser(import("json.dpick")).parse();
-        d = Parser(import("bson.dpick")).parse();        
+        d = Parser(import("bson.dpick")).parse();
         return d;
     };
     //enum ctTests = tests();
     tests();
-    writeln(Parser("id*2+3, ").parseExpression());
+    Expr e = Parser("id*2+3, ").parseExpression();
+    assert(e.match!((BinExpr be){
+        assert(be.left.match!((BinExpr e) => true), "left sin't binary");
+        assert(be.right.match!((Number n) => n.value == 3), "borked right");
+        return be.op == "+";
+    }), "not binary expr");
+    assert(e.to!string == "id*2+3");
 }

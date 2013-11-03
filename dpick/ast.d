@@ -5,6 +5,13 @@ import std.typetuple, std.traits;
 abstract class Ast
 {
     abstract void accept(const Visitor walker);    
+    override string toString()
+    {
+        import std.array;
+        auto app = appender!string();
+        this.writeTo((const(char)[] s)=> app.put(s));
+        return app.data;
+    }
 }
 
 mixin template Visitable()
@@ -294,7 +301,8 @@ string nullVistorFor(T...)()
 class Visitor
 {
     mixin(nullVistorFor!(
-        Expr, StringPattern, BytePattern, NameExpr,
+        BinExpr, UnExpr, Number, Variable,
+        StringPattern, BytePattern, NameExpr, 
         AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
         DataPiece, DataSeq, DataAlt,
         ByteMask, Byte, CharMask, Char
@@ -316,17 +324,18 @@ private string generateAdhocVisitor(Types...)(bool withRet)
     return ret;
 }
 
-auto match(Fns...)(Ast node)
+public auto match(Fns...)(Ast node)
     if(allSatisfy!(isCallable, Fns) && allSatisfy!(isUnary, Fns))
 {
     import std.typecons;
     alias Args = staticMap!(ParameterTypeTuple, Fns);
     alias Rets = staticMap!(ReturnType, Fns);
-    static assert(NoDuplicates!Rets.length == 1, "return types must be the same");
-    enum hasReturn = !is(Rets[0] == void);
+    //if types are different, do not return anything    
+    enum hasReturn = !is(Rets[0] == void) && NoDuplicates!Rets.length == 1;
     static if(hasReturn)
         Rets[0] ret;
     class Matcher : Visitor {
+        //pragma(msg, generateAdhocVisitor!(Args)(hasReturn));
         mixin(generateAdhocVisitor!(Args)(hasReturn));
     };
     //@@@BUG@@@ should be able to be static but segfaults at R-T
@@ -335,6 +344,50 @@ auto match(Fns...)(Ast node)
     node.accept(m);
     static if(hasReturn)
         return ret;
+}
+
+void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
+{
+    import std.format;
+    ast.match!(
+        (BinExpr e){
+            e.left.writeTo(sink);
+            sink(e.op);
+            e.right.writeTo(sink);
+        },
+        (UnExpr e){
+            sink(e.op);
+            e.arg.writeTo(sink);
+        }, 
+        (Number n) => formattedWrite(sink, "%d", n.value),
+        (Variable var) => sink(var.id),
+        (StringPattern pat) => sink("StringPat"),
+        (BytePattern pat) => sink("BytePat"),
+        (NameExpr  n){
+            sink("Name(");
+            sink(n.id);
+            sink(")");
+        },
+        (AliasAtom a){
+            sink(a.id);
+            sink(" -> ");
+            a.expr.writeTo(sink);
+        }, 
+        (AliasExpr e){
+            foreach(a; e.others){
+                a.writeTo(sink);
+            }
+        }, 
+        (EntityAtom a) => sink("_"),
+        (ExprAtom a) => sink("_"), 
+        (DataPiece dp) => sink("_"),
+        (DataSeq seq) => sink("_"),
+        (DataAlt alt) => sink("_"),
+        (ByteMask mask) => sink("_"),
+        (Byte b) => formattedWrite(sink, " 0x%2x ", b.value),
+        (CharMask mask) => sink("_"),
+        (Char ch) => sink((&ch.ch)[0..1]),
+    );
 }
 
 unittest
