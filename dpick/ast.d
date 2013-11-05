@@ -2,6 +2,8 @@ module dpick.ast;
 
 import std.typetuple, std.traits;
 
+alias Seq = TypeTuple;
+
 abstract class Ast
 {
     abstract bool accept(Visitor walker);    
@@ -298,17 +300,40 @@ string nullVistorFor(T...)()
         return "";
 }
 
+alias AstLeafTypes =  TypeTuple!(
+    BinExpr, UnExpr, Number, Variable,
+    StringPattern, BytePattern, NameExpr, 
+    AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
+    DataPiece, DataSeq, DataAlt,
+    ByteMask, Byte, CharMask, Char
+);
+
+template EraseIf(alias pred, T...)
+{
+    static if(T.length > 0)
+    {
+        static if(pred!(T[0]))
+            alias EraseIf = EraseIf!(pred, T[1..$]);
+        else
+            alias EraseIf = Seq!(T[0], EraseIf!(pred, T[1..$]));
+    }
+    else
+        alias EraseIf = Seq!();
+}
+
+template SubtypesOf(Base, T...)
+{
+    enum isNotSubtype(U) = !is(U : Base);
+    alias SubtypesOf = EraseIf!(isNotSubtype, T);
+}
+
+//pragma(msg, SubtypesOf!(Expr, AstLeafTypes));
+
 class Visitor
 {
     bool stopFlag;
     public void stop(){ stopFlag = true; }
-    mixin(nullVistorFor!(
-        BinExpr, UnExpr, Number, Variable,
-        StringPattern, BytePattern, NameExpr, 
-        AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
-        DataPiece, DataSeq, DataAlt,
-        ByteMask, Byte, CharMask, Char
-    ));
+    mixin(nullVistorFor!(AstLeafTypes));
 }
 
 enum isUnary(alias Fn) = arity!Fn == 1;
