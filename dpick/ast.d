@@ -338,15 +338,24 @@ class Visitor
 
 enum isUnary(alias Fn) = arity!Fn == 1;
 
+//first-match pattern matching
 private string generateAdhocVisitor(Types...)(bool withRet)
 {
     import std.conv;
     string ret;
-    foreach(i, t; Types)
+    int[string] calls;
+    foreach(i, T; Types)
     {
-        ret ~= `override bool visit(`~t.stringof~` arg){`
+        alias S = SubtypesOf!(T, AstLeafTypes);
+        foreach(ts; S)
+            if(ts.stringof !in calls)
+                calls[ts.stringof] = i;
+    }
+    foreach(key, val; calls)
+    {        
+        ret ~= `override bool visit(`~key~` arg){`
             ~(withRet ? `ret = ` : ``)~`Fns[`
-            ~to!string(i)~`](arg); return stopFlag; }`;
+            ~to!string(val)~`](arg); return stopFlag; }`;
     }
     return ret;
 }

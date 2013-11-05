@@ -604,5 +604,7 @@ unittest
         assert(be.right.match!((Number n) => n.value == 3), "borked right");
         return be.op == "+";
     }), "not binary expr");
+    //use first-match with default
+    assert(e.match!((UnExpr e) => false, (Ast a)=>true, (BinExpr b)=>false));
     assert(e.to!string == "id*2+3");
 }
