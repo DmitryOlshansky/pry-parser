@@ -595,6 +595,7 @@ unittest
         d = Parser(import("json.dpick")).parse();
         //writeln(d["root"]);
         d = Parser(import("bson.dpick")).parse();
+        writeln(d["binary"]);
         return d;
     };
     //enum ctTests = tests();

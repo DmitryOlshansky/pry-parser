@@ -1,6 +1,7 @@
 module dpick.ast;
 
 import std.typetuple, std.traits;
+import dpick.misc;
 
 alias Seq = TypeTuple;
 
