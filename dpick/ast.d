@@ -384,64 +384,99 @@ public auto matcher(Fns...)()
 
 enum TraverseMode {
     inOrder,
-    postOrder
+    postOrder,
+    both
 }
 
-bool _depthFirst(TraverseMode mode=inOrder)(Ast node, Visitor visitor)
-{
-    static if(mode == inOrder)
-        if(!e.accept(visitor))
-            return false;
-    bool m = ast.match!(
-        (BinExpr e)=> e.left._depthFirst(visitor) ?
-                e.right._depthFirst(visitor) : false,
-        (UnExpr e) => e.arg._depthFirst(visitor), 
-        (Number n) => true,
-        (Variable var) => true,
-        (StringPattern pat) => true,
-        (BytePattern pat) => true,
-        (NameExpr  n) => true,
-        (AliasAtom a) => a.expr._depthFirst(visitor), 
-        (AliasExpr e){
-            foreach(a; e.others){
-                if(!a._depthFirst(visitor))
-                    return false;
-            }
-            return true;
-        },
-        (EntityAtom a) => a.entity._depthFirst(visitor),
-        (ExprAtom a) => a.expr._depthFirst(visitor), 
-        (DataPiece dp) {
-            if(dp.atom._depthFirst(visitor))
+//Handles both visitation and search
+template DepthFirst(TraverseMode mode){
+    struct DepthFirst{
+        enum before = TraverseMode.inOrder || mode == TraverseMode.both;
+        enum after = TraverseMode.postOrder || mode == TraverseMode.both;
+        static if(before)
+            Visitor rise;
+        static if(after)
+            Visitor fall;
+        static if(before && after)
+            this(Visitor onIn, Visitor onOut)
             {
-                return dp.low._depthFirst(visitor) ? 
-                    dp.high._depthFirst(visitor) : false;
+                rise = onIn;
+                fall = onOut;
             }
-            return false;
-        },
-        (DataSeq seq)  {
-            foreach(a; seq.items){
-                if(!a._depthFirst(visitor))
+        else static if(before)
+            this(Visitor call)
+            {
+                rise = call;
+            }
+        else static if(after)
+            this(Visitor call)
+            {
+                fall = call;
+            }
+
+        bool go(Ast node)
+        {
+            static if(before)
+                if(!e.accept(rise))
                     return false;
-            }
-            return true;
-        },
-        (DataAlt alt)  {
-            foreach(a; alt.items){
-                if(!a._depthFirst(visitor))
+            bool m = ast.match!(
+                (DataPiece dp) {
+                    if(dp.atom.go()){
+                        return dp.low.go() ? dp.high.go() : false;
+                    }
                     return false;
-            }
-            return true;
-        },
-        (ByteMask mask) =>true,
-        (Byte b)  => true,
-        (CharMask mask) => true,
-        (Char ch)  => true,
-    );
-    if(!m)
-        return false;
-    static if(mode == postOrder)
-        return e.accept(visitor);
+                },
+                (DataSeq seq)  {
+                    foreach(a; seq.items){
+                        if(!a.go())
+                            return false;
+                    }
+                    return true;
+                },
+                (DataAlt alt)  {
+                    foreach(a; alt.items){
+                        if(!a.go())
+                            return false;
+                    }
+                    return true;
+                },
+                (BinExpr e)=> e.left.go() ? e.right.go() : false,
+                (UnExpr e) => e.arg.go(), 
+                (Number n) => true,
+                (Variable var) => true,
+                (StringPattern pat) => true,
+                (BytePattern pat) => true,
+                (NameExpr  n) => true,
+                (AliasAtom a) => a.expr.go(), 
+                (AliasExpr e){
+                    foreach(a; e.others){
+                        if(!a.go())
+                            return false;
+                    }
+                    return true;
+                },
+                (EntityAtom a) => a.entity.go(),
+                (ExprAtom a) => a.expr.go(),                 
+                (ByteMask mask) =>true,
+                (Byte b)  => true,
+                (CharMask mask) => true,
+                (Char ch)  => true,
+            );
+            if(!m)
+                return false;
+            static if(after)
+                return e.accept(fall);
+        }   
+
+        bool walk(Ast node)
+        {
+            static if(before)
+                rise.stopFlag = false;
+            static if(after)
+                fall.stopFlag = false;
+            return go(node);
+        }
+    }
 }
 
 
@@ -458,15 +493,45 @@ public auto depthFirst(Fns...)(Ast node)
     if(allSatisfy!(isCallable, Fns) && allSatisfy!(isUnary, Fns))
 {
     auto m = matcher!(Fns);
-    node.depthFirst(m);
+    DepthFirst!(TraverseMode.inOrder) walker(m);
+    walker.walk(node);
     static if(is(typeof(m.value)))
         return m.value;
 }
 
+//TODO: find with Preds on top of depthFirst
+
 void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
 {
     import std.format;
+    static void applyTo(Range)(Range items, string sep, 
+        scope void delegate (const(char)[]) sink)
+    {
+        foreach(i, v; items)
+        {            
+            v.writeTo(sink);
+            if(i != items.length-1)
+                sink(sep);
+        }
+    }
     ast.match!(
+        (DataPiece dp) {
+            dp.atom.writeTo(sink);
+            if(dp.low.match!((Number n) => n.value == 1) 
+            && dp.high.match!((Number n) => n.value == 1))
+                return;
+            sink("{");
+            dp.low.writeTo(sink);
+            sink(",");
+            dp.high.writeTo(sink);
+            sink("}");
+        },
+        (DataSeq seq){
+            applyTo(seq.items, ",", sink);
+        },
+        (DataAlt alt){
+            applyTo(alt.items, "|", sink); 
+        },
         (BinExpr e){
             e.left.writeTo(sink);
             sink(e.op);
@@ -475,11 +540,19 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
         (UnExpr e){
             sink(e.op);
             e.arg.writeTo(sink);
-        }, 
+        },
         (Number n) => formattedWrite(sink, "%d", n.value),
         (Variable var) => sink(var.id),
-        (StringPattern pat) => sink("StringPat"),
-        (BytePattern pat) => sink("BytePat"),
+        (StringPattern pat) {
+            sink(`StringPat!"`);
+            applyTo(pat.pattern, "", sink);
+            sink(`"`);
+        },
+        (BytePattern pat) {
+            sink(`BytePat!"`);
+            applyTo(pat.pattern, "", sink);
+            sink(`"`);
+        },
         (NameExpr  n){
             sink("Name(");
             sink(n.id);
@@ -491,18 +564,17 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
             a.expr.writeTo(sink);
         }, 
         (AliasExpr e){
-            foreach(a; e.others){
-                a.writeTo(sink);
-            }
+            applyTo(e.others, ",", sink);            
         },
-        (EntityAtom a) => sink("_"),
-        (ExprAtom a) => sink("_"), 
-        (DataPiece dp) => sink("_"),
-        (DataSeq seq) => sink("_"),
-        (DataAlt alt) => sink("_"),
-        (ByteMask mask) => sink("_"),
-        (Byte b) => formattedWrite(sink, " 0x%2x ", b.value),
-        (CharMask mask) => sink("_"),
+        (EntityAtom a){ a.entity.writeTo(sink); },
+        (ExprAtom a){
+            sink("(");
+            a.expr.writeTo(sink);
+            sink(")");
+        },
+        (ByteMask mask) => formattedWrite(sink, "[%s]", mask),
+        (Byte b) => formattedWrite(sink, `\x%2x`, b.value),
+        (CharMask mask) => formattedWrite(sink, "[%s]", mask),
         (Char ch) => sink((&ch.ch)[0..1]),
     );
 }

@@ -593,6 +593,7 @@ unittest
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
         d = Parser(import("json.dpick")).parse();
+        //writeln(d["root"]);
         d = Parser(import("bson.dpick")).parse();
         return d;
     };
@@ -600,7 +601,7 @@ unittest
     tests();
     Expr e = Parser("id*2+3, ").parseExpression();
     assert(e.match!((BinExpr be){
-        assert(be.left.match!((BinExpr e) => true), "left sin't binary");
+        assert(be.left.match!((BinExpr e) => true), "left isn't binary");
         assert(be.right.match!((Number n) => n.value == 3), "borked right");
         return be.op == "+";
     }), "not binary expr");
