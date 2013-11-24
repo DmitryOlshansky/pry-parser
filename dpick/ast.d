@@ -167,32 +167,6 @@ class StringPattern : EntityExpr
     }
 }
 
-struct BitMask(size_t bitSize)
-{
-@safe pure:
-    uint[(1<<bitSize)/32] mask;
-
-    void mark(int start, int end)
-    {
-        //TODO: optimize, e.g. can mark a word at at time
-        for(int idx = start; idx<end; idx++)
-        {
-            mask[idx/32] |= 1<<(idx%32);
-        }
-    }
-
-    uint opIndex(uint idx)
-    {
-        return mask[idx/32] & 1<<idx;
-    }
-
-    void invert()
-    {
-        foreach(ref w; mask)
-            w = ~w;
-    }
-}
-
 class ByteClass : Ast{}
 
 class ByteMask : ByteClass
