@@ -1,6 +1,6 @@
 module dpick.parser;
 
-import dpick.ast;
+import dpick.ast, dpick.misc;
 
 import std.algorithm, std.range, std.exception, std.typecons;
 import std.typetuple;

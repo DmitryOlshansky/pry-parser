@@ -3,25 +3,30 @@ module dpick.misc;
 struct Stack(T)
 {
 @safe pure:
+    enum growFixed = 8, growLinQ = 14, growLinD = 10;
     T[] data;
-    @property bool empty(){ return data.empty; }
+    size_t tip;
+    @property bool empty(){ return tip == 0; }
 
-    @property size_t length(){ return data.length; }
+    @property size_t length(){ return tip; }
 
-    void push(T val){ data ~= val;  }
+    void push(T val) {
+        if(tip == data.length)
+            data.length = growFixed + data.length * growLinQ/growLinD;
+        data[tip++] = val;
+    }
     
     T pop()
     {
         assert(!empty);
-        auto val = data[$ - 1];
-        data = data[0 .. $ - 1];
+        auto val = data[--tip];
         return val;
     }
 
     @property ref T top()
     {
         assert(!empty);
-        return data[$ - 1]; 
+        return data[tip - 1]; 
     }
 }
 
