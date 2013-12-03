@@ -102,6 +102,40 @@ unittest
     assert(buf.front == 2 && buf[1] == 3);
 }
 
+//pinning implemented as r-b tree
+struct PinningRBT {
+    import std.container;
+    //TODO: better set structure (preferably tunned for small sets)
+    RedBlackTree!(size_t) marks;
+    //AA mark -> num of marks to the same chunk
+    uint[size_t] counts;
+    void add(size_t blk) {        
+        if(blk in counts) //hash is O(1)
+            counts[blk]++;
+        else {
+            marks.insert(blk);
+            counts[blk] = 1;
+        }
+    }
+    void remove(size_t blk) {
+        if(--counts[blk] == 0) {
+            marks.remove(marks.equalRange(blk));
+            counts.remove(blk);
+        }
+    }
+    @property empty(){ return marks.empty; }
+    @property size_t lowerBound(){ return marks.front; }
+}
+
+//lack of 0-arg ctors
+auto pinningRBT()
+{
+    import std.container;
+    PinningRBT ret;
+    ret.marks = new RedBlackTree!(size_t);
+    return ret;
+}
+
 struct GenericBuffer {
     static struct Mark {
         @disable this(this);
@@ -118,7 +152,7 @@ struct GenericBuffer {
         chunkSize = chunk;
         read = readBlock;
         buffer = new ubyte[initial*chunkSize]; //TODO: revisit with std.allocator
-        marks = new typeof(marks)();
+        pinning = pinningRBT();
         fillBuffer(0);
     }
 
@@ -163,8 +197,8 @@ struct GenericBuffer {
     body {
         //number of full blocks at front of buffer till first pinned by marks
         // or till 'cur' that is to be considered as pinned
-        auto start = marks.empty ? cur & ~(chunkSize-1) : 
-                chunkSize*(marks.front - cast(size_t)(mileage/chunkSize));
+        auto start = pinning.empty ? cur & ~(chunkSize-1) : 
+                chunkSize*(pinning.lowerBound - cast(size_t)(mileage/chunkSize));
         if (start >= extra + chunkSize-1) {
             copy(buffer[start..$], buffer[0..$-start]);
             mileage += start;
@@ -193,19 +227,17 @@ struct GenericBuffer {
         }
     }
 
-    size_t offset(ref Mark m) {
+    size_t offset()(ref Mark m) {
         return cast(size_t)(m.pos - mileage);
+    }
+
+    size_t page()(ulong absIdx) {
+        return cast(size_t)(absIdx/chunkSize);
     }
 
     @property Mark mark() {
         auto m = Mark(mileage+cur, &this);
-        auto blk = cast(size_t)(m.pos/chunkSize);
-        if(blk in counts) //hash is O(1)
-            counts[blk]++;
-        else {
-            marks.insert(blk);
-            counts[blk] = 1;
-        }
+        pinning.add(page(m.pos));
         return m;
     }
 
@@ -219,19 +251,11 @@ struct GenericBuffer {
 
     //
     void discard(ulong ofs) {
-        auto blk = cast(size_t)(ofs / chunkSize);
-        if(--counts[blk] == 0) {
-            marks.remove(marks.equalRange(blk));
-            counts.remove(blk);
-        }
+        pinning.remove(page(ofs));        
     }
-    import std.container;
-    //any good set structure would do (preferably for small sets)
-    RedBlackTree!(size_t) marks;
-    //AA mark -> num of marks to the same chunk
-    uint[size_t] counts;
+    PinningRBT pinning;
     size_t delegate(ubyte[]) read;
-    ubyte[] buffer; //bit enough to contain all present marks
+    ubyte[] buffer; //big enough to contain all present marks
     size_t cur; //current position    
     size_t chunkSize;
     ulong mileage; //bytes discarded before curent buffer.ptr
