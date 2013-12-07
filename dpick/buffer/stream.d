@@ -1,4 +1,6 @@
-import dpick.buffer.buffer;
+module dpick.buffer.stream;
+
+import dpick.buffer.traits;
 
 import std.range, std.algorithm, std.exception;
 
@@ -70,18 +72,21 @@ private:
 
 version(Posix)
 struct PosixFileInput {
-    import core.sys.posix.io;
-
+    import core.sys.posix.unistd : _read = read, _close = close;
+    import core.sys.posix.fcntl;
+    
+    @disable this(this);
+    
     this(string path) {
-        file =  open(path.ptr, O_RDONLY);
+        file = open(path.ptr, O_RDONLY);
         enforce(file >= 0);
     }
 
     size_t read(ubyte[] dest){
         if (exhasted)
             return 0;
-        int got;
-        got = read(file, dest.ptr, dest.length);
+        ptrdiff_t got;
+        got = _read(file, dest.ptr, dest.length);
         enforce(got >= 0);
         if (got != dest.length)
             exhasted = true;
@@ -90,7 +95,7 @@ struct PosixFileInput {
 
     void close(){
         if(file >= 0){
-            enforce(close(file));
+            enforce(_close(file));
             file = -1;
         }
     }

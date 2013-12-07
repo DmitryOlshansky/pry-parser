@@ -1,52 +1,7 @@
 module dpick.buffer.buffer;
 
 import std.algorithm, std.range;
-
-enum isBuffer(T) = __traits(compiles, (ref T buf){
-    if(!buf.empty) {
-        auto v = buf.front;
-        static assert(is(typeof(v) : ubyte));        
-        assert(buf[0] == v);
-        assert(buf.has(2));
-        auto m = buf.mark();
-        buf.popFront();        
-        auto s = buf.slice(m);
-        static assert(isRandomAccessRange!(typeof(s)));
-        static assert(is(ElementType!(typeof(s)) : ubyte));
-        buf.restore(m);
-    }
-});
-
-//can slice buffer's data directly, not copies nessary
-enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (ref Buffer buf){ 
-    auto m = buf.mark();
-    //slice may as well take only L-values
-    alias SliceType = typeof(buf.slice(m));
-    static assert(is(SliceType : immutable(ubyte)[]));
-});
-
-/// Conceptual mark-slice Buffer with lookahead
-struct BufferConcept {
-    struct Range { }
-    struct Mark { }
-    ///InputRange troika
-    @property ubyte front(){ assert(0); }
-    ///ditto
-    @property bool empty(){ assert(0); }
-    ///ditto
-    void popFront(){ assert(0); }
-    /// lookahead from current position (extends buffer as required)
-    ubyte opIndex(size_t idx){ assert(0); }
-    /// check if the buffer has at least bytes left in it (so can use lookahead)
-    @property bool has(size_t n){ assert(0); }
-    /// instructs the underlying abstraction
-    /// to keep a hidden 'absolute offset' to slice off later
-    Mark mark(){ return Mark.init; }
-    /// Reset buffer state to previously marked position
-    void restore(ref Mark ){ assert(0); }
-    /// Peek at slice from $(D m) to the current position
-    Range slice(ref Mark m){ assert(0); }
-}
+import dpick.buffer.traits;
 
 struct ArrayBuffer(T) {
     static struct Mark { size_t ofs; }
@@ -135,32 +90,6 @@ auto pinningRBT()
     ret.marks = new RedBlackTree!(size_t);
     return ret;
 }
-
-///A do nothing implementaiton of InputStream concept.
-struct NullInputStream
-{
-    ///Non-copyable
-    @disable this(this);
-    /**
-        Read some bytes to dest and return the amount acutally read.
-        Upper limit is dest.length bytes.
-    */
-    size_t read(ubyte[] dest){ return 0; }
-    /**
-        Checks if reached the end of stream (file).
-        Once eof returns true, all subsequent reads succeed but return 0.
-    */
-    @property bool eof(){ return true; }
-    /// Close underlying stream and free related resources.
-    void close(){}
-}
-
-enum isInputStream(T) = __traits(compiles, (ref T s){
-    ubyte[] buf;
-    size_t len = s.read(buf);
-    assert(s.eof);
-    s.close();
-}) && !__traits(compiles, (T b){ T a = b; });
 
 struct GenericBuffer(Input) 
     if(isInputStream!Input)
@@ -296,32 +225,31 @@ struct GenericBuffer(Input)
 static assert(isBuffer!(GenericBuffer!NullInputStream));
 
 //TODO: tweak defaults
-auto buffer(Input)(Input stream, size_t chunk=1024, size_t n=8)
+auto buffer(Input)(Input stream, size_t chunk=512, size_t n=16)
     if(isInputStream!Input)
 {
     return GenericBuffer!Input(move(stream), chunk, n);
-}
-
-struct ChunkArray {
-    @disable this(this);
-    this(ubyte[] src) {
-        leftover = src;
-    }
-    size_t read(ubyte[] dest){
-        auto toCopy = min(leftover.length, dest.length);
-        dest[0..toCopy] = leftover[0..toCopy];
-        leftover = leftover[toCopy..$];
-        return toCopy;
-    }
-    @property bool eof(){ return leftover.length == 0; }
-    void close(){}
-    ubyte[] leftover;
 }
 
 static assert(isInputStream!ChunkArray);
 
 unittest
 {
+    static struct ChunkArray {
+        @disable this(this);
+        this(ubyte[] src) {
+            leftover = src;
+        }
+        size_t read(ubyte[] dest){
+            auto toCopy = min(leftover.length, dest.length);
+            dest[0..toCopy] = leftover[0..toCopy];
+            leftover = leftover[toCopy..$];
+            return toCopy;
+        }
+        @property bool eof(){ return leftover.length == 0; }
+        void close(){}
+        ubyte[] leftover;
+    }
     import std.conv;
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array 
