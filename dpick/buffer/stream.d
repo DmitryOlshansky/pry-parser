@@ -1,0 +1,136 @@
+import dpick.buffer.buffer;
+
+import std.range, std.algorithm, std.exception;
+
+version(Windows)
+struct Win32FileInput {
+    @disable this(this);
+
+    import std.conv;
+    import core.sys.windows.windows;
+
+    this(in char[] path) {
+        this(to!wstring(path));
+    }
+
+    this(in wchar[] path) {
+        const(wchar)[] result;
+        bool unc = path.startsWith(`\\?\`w);
+        bool zStr = path.length && path[$-1] == 0;
+        if(unc && zStr)
+            result = path;
+        else {
+            wchar[] buf = new wchar[path.length + (unc ? 0 : 1) + (zStr ? 0 : 1)];
+            auto tail = unc ? repr(buf) : copy(repr(`\\?\`w), repr(buf));
+            tail = copy(repr(path), tail);
+            if(!zStr)
+                tail[0] = 0;
+            result = buf;
+        }
+        debug {
+            import std.stdio;
+            writeln("New path: %s", buf);
+        }
+        file = enforce(CreateFileW(
+            result.ptr, GENERIC_READ, cast(uint)FILE_SHARE_READ, null,
+            cast(uint)OPEN_EXISTING, cast(uint)FILE_ATTRIBUTE_NORMAL, null
+        ));
+    }
+
+    size_t read(ubyte[] dest){
+        if (exhasted)
+            return 0;
+        size_t got;
+        enforce(ReadFile(file, dest.ptr, dest.length, &got, null));
+        if (got != dest.length)
+            exhasted = true;
+        return got;
+    }
+
+    void close(){
+        if(file != INVALID_HANDLE_VALUE){
+            enforce(CloseHandle(file));
+            file = INVALID_HANDLE_VALUE;
+        }
+    }
+
+    @property bool eof(){ return exhasted; }
+
+    ~this(){
+        close();
+    }
+
+private:
+    static inout(ushort)[] repr(inout(wchar)[] arg) { 
+        return cast(inout(ushort)[])arg;
+    }
+    HANDLE file = INVALID_HANDLE_VALUE;
+    bool exhasted;
+}
+
+version(Posix)
+struct PosixFileInput {
+    import core.sys.posix.io;
+
+    this(string path) {
+        file =  open(path.ptr, O_RDONLY);
+        enforce(file >= 0);
+    }
+
+    size_t read(ubyte[] dest){
+        if (exhasted)
+            return 0;
+        int got;
+        got = read(file, dest.ptr, dest.length);
+        enforce(got >= 0);
+        if (got != dest.length)
+            exhasted = true;
+        return got;
+    }
+
+    void close(){
+        if(file >= 0){
+            enforce(close(file));
+            file = -1;
+        }
+    }
+
+    @property bool eof(){ return exhasted; }
+
+    ~this(){
+        close();
+    }
+private:
+    int file = -1;
+    bool exhasted;
+}
+
+version(Windows)
+    alias FileInput = Win32FileInput;
+else version(Posix)
+    alias FileInput = PosixFileInput;
+else
+    static assert("Unsupported platform");
+
+///Create an input stream from file, that directly uses system I/O calls.
+auto fileInput(C)(in C[] path)
+    if(isSomeChar!C)
+{
+    import std.conv;
+    version(Windows){
+        static if(is(Unqual!C == wchar))
+            return FileInput(path);
+        else
+            return FileInput(to!wstring(path));
+    }
+    else version(Posix){
+        static if(is(Unqual!C == char))
+            return FileInput(path);
+        else
+            return FileInput(to!string(path));
+    }
+    else
+        static assert("Unsupported platform");
+}
+
+static assert(isInputStream!FileInput);

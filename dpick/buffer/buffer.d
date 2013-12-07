@@ -1,4 +1,4 @@
-module dpick.buffer;
+module dpick.buffer.buffer;
 
 import std.algorithm, std.range;
 
@@ -295,7 +295,9 @@ struct GenericBuffer(Input)
 
 static assert(isBuffer!(GenericBuffer!NullInputStream));
 
-auto genericBuffer(Input)(Input stream, size_t chunk=1024, size_t n=8)
+//TODO: tweak defaults
+auto buffer(Input)(Input stream, size_t chunk=1024, size_t n=8)
+    if(isInputStream!Input)
 {
     return GenericBuffer!Input(move(stream), chunk, n);
 }
@@ -323,7 +325,7 @@ unittest
     import std.conv;
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array 
-    auto buf = genericBuffer(ChunkArray(arr), 4, 2);
+    auto buf = buffer(ChunkArray(arr), 4, 2);
     assert(!buf.empty);
     assert(buf.front == 10);
     assert(buf.has(20));
