@@ -18,7 +18,7 @@ enum isBuffer(T) = __traits(compiles, (ref T buf){
 });
 
 //can slice buffer's data directly, not copies nessary
-enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (Buffer buf){ 
+enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (ref Buffer buf){ 
     auto m = buf.mark();
     //slice may as well take only L-values
     alias SliceType = typeof(buf.slice(m));
@@ -136,7 +136,35 @@ auto pinningRBT()
     return ret;
 }
 
-struct GenericBuffer {
+///A do nothing implementaiton of InputStream concept.
+struct NullInputStream
+{
+    ///Non-copyable
+    @disable this(this);
+    /**
+        Read some bytes to dest and return the amount acutally read.
+        Upper limit is dest.length bytes.
+    */
+    size_t read(ubyte[] dest){ return 0; }
+    /**
+        Checks if reached the end of stream (file).
+        Once eof returns true, all subsequent reads succeed but return 0.
+    */
+    @property bool eof(){ return true; }
+    /// Close underlying stream and free related resources.
+    void close(){}
+}
+
+enum isInputStream(T) = __traits(compiles, (ref T s){
+    ubyte[] buf;
+    size_t len = s.read(buf);
+    assert(s.eof);
+    s.close();
+}) && !__traits(compiles, (T b){ T a = b; });
+
+struct GenericBuffer(Input) 
+    if(isInputStream!Input)
+{
     static struct Mark {
         @disable this(this);
         ~this() {
@@ -147,10 +175,10 @@ struct GenericBuffer {
         GenericBuffer* buf;
     }
 
-    this(size_t delegate(ubyte[]) readBlock, size_t chunk, size_t initial) {
+    this(Input inp, size_t chunk, size_t initial) {
         assert((chunk & (chunk-1)) == 0);
         chunkSize = chunk;
-        read = readBlock;
+        input = move(inp);
         buffer = new ubyte[initial*chunkSize]; //TODO: revisit with std.allocator
         pinning = pinningRBT();
         fillBuffer(0);
@@ -220,10 +248,13 @@ struct GenericBuffer {
     // read up to the end of buffer, starting at start; shorten on last read
     void fillBuffer(size_t start)
     {
-        size_t got = read(buffer[start..$]);
-        if (got + start < buffer.length) {
-            last = true;
+        size_t got = input.read(buffer[start..$]);
+        if (got + start < buffer.length) {            
             buffer = buffer[0..got+start];
+            if(input.eof)
+                last = true;
+            else
+                buffer.assumeSafeAppend();
         }
     }
 
@@ -254,7 +285,7 @@ struct GenericBuffer {
         pinning.remove(page(ofs));        
     }
     PinningRBT pinning;
-    size_t delegate(ubyte[]) read;
+    Input input;
     ubyte[] buffer; //big enough to contain all present marks
     size_t cur; //current position    
     size_t chunkSize;
@@ -262,24 +293,37 @@ struct GenericBuffer {
     bool last; // no more bytes to read
 }
 
-static assert(isBuffer!(GenericBuffer));
+static assert(isBuffer!(GenericBuffer!NullInputStream));
 
-auto genericBuffer(size_t delegate(ubyte[]) reader, size_t chunk=1024, size_t n=8)
+auto genericBuffer(Input)(Input stream, size_t chunk=1024, size_t n=8)
 {
-    return GenericBuffer(reader, chunk, n);
+    return GenericBuffer!Input(move(stream), chunk, n);
 }
+
+struct ChunkArray {
+    @disable this(this);
+    this(ubyte[] src) {
+        leftover = src;
+    }
+    size_t read(ubyte[] dest){
+        auto toCopy = min(leftover.length, dest.length);
+        dest[0..toCopy] = leftover[0..toCopy];
+        leftover = leftover[toCopy..$];
+        return toCopy;
+    }
+    @property bool eof(){ return leftover.length == 0; }
+    void close(){}
+    ubyte[] leftover;
+}
+
+static assert(isInputStream!ChunkArray);
 
 unittest
 {
     import std.conv;
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array 
-    auto buf = genericBuffer((ubyte[] target){
-        auto toCopy = min(target.length, arr.length);
-        target[0..toCopy] = arr[0..toCopy];
-        arr = arr[toCopy..$];
-        return toCopy;
-    }, 4, 2);
+    auto buf = genericBuffer(ChunkArray(arr), 4, 2);
     assert(!buf.empty);
     assert(buf.front == 10);
     assert(buf.has(20));
