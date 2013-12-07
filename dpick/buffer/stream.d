@@ -95,7 +95,7 @@ struct PosixFileInput {
 
     void close(){
         if(file >= 0){
-            enforce(_close(file));
+            enforce(_close(file) == 0);
             file = -1;
         }
     }
@@ -119,7 +119,7 @@ else
 
 ///Create an input stream from file, that directly uses system I/O calls.
 auto fileInput(C)(in C[] path)
-    if(isSomeChar!C)
+    if(is(C : dchar))
 {
     import std.conv;
     version(Windows){

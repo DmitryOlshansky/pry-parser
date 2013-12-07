@@ -2,11 +2,12 @@ module dpick.buffer.traits;
 
 ///Test if T follows Buffer concept
 enum isBuffer(T) = __traits(compiles, (ref T buf){
+    import std.range;
     if(!buf.empty) {
         auto v = buf.front;
         static assert(is(typeof(v) : ubyte));        
         assert(buf[0] == v);
-        assert(buf.has(2));
+        assert(buf.lookahead(2));
         auto m = buf.mark();
         buf.popFront();        
         auto s = buf.slice(m);
@@ -30,10 +31,10 @@ struct NullBuffer {
     @property bool empty(){ return true; }
     ///ditto
     void popFront(){ assert(0); }
-    /// lookahead from current position (extends buffer as required)
+    /// lookahead from current position (must call lookahead first)
     ubyte opIndex(size_t idx){ assert(0); }
-    /// check if the buffer has at least bytes left in it (so can use lookahead)
-    @property bool has(size_t n){ return false; }
+    /// ensure that buffer has at least bytes left in it (so can use opIndex)
+    @property bool lookahead(size_t n){ return false; }
     /// instructs the underlying abstraction
     /// to keep a hidden 'absolute offset' to slice off later
     Mark mark(){ return Mark.init; }

@@ -13,7 +13,7 @@ struct ArrayBuffer(T) {
     in {  assert(!empty); }
     body { cur++; }
     ubyte opIndex(size_t idx){ return data[cur+idx]; }
-    @property bool has(size_t n){ return data.length  >= cur + n; }
+    @property bool lookahead(size_t n){ return data.length  >= cur + n; }
     void restore(Mark m){ cur = m.ofs; }
     Mark mark(){ return Mark(cur); }
     T[] slice(Mark m){ return data[m.ofs..cur]; } 
@@ -40,14 +40,14 @@ static assert(isZeroCopy!(ArrayBuffer!(immutable(ubyte))));
 unittest
 {
     auto buf = buffer([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    assert(buf.has(9));
+    assert(buf.lookahead(9));
     assert(buf[0] == 1);
     assert(buf.front == 1);
     buf.popFront();
     assert(buf.front == 2);
     assert(buf[0] == 2 && buf[1] == 3);
     auto m = buf.mark();
-    assert(buf.has(8));
+    assert(buf.lookahead(8));
     foreach(_; 0..8)
         buf.popFront();
     assert(buf.empty);
@@ -123,7 +123,9 @@ struct GenericBuffer(Input)
         return buffer[cur];
     }
 
-    @property bool empty() { return !has(1); }
+    @property bool empty() { 
+        return last && cur == buffer.length; 
+    }
 
     void popFront() {
         cur++; 
@@ -132,11 +134,12 @@ struct GenericBuffer(Input)
     }
 
     ubyte opIndex(size_t idx) {
-        has(idx+1);
+        assert(cur + idx < buffer.length, 
+            "Buffer overrun while indexing - was lookahead called?");
         return buffer[cur+idx];
     }
 
-    @property bool has(size_t n) {
+    @property bool lookahead(size_t n) {
         if (buffer.length < cur + n) {
             if (last)
                 return false;
@@ -231,8 +234,6 @@ auto buffer(Input)(Input stream, size_t chunk=512, size_t n=16)
     return GenericBuffer!Input(move(stream), chunk, n);
 }
 
-static assert(isInputStream!ChunkArray);
-
 unittest
 {
     static struct ChunkArray {
@@ -250,14 +251,17 @@ unittest
         void close(){}
         ubyte[] leftover;
     }
+    static assert(isInputStream!ChunkArray);
+    
     import std.conv;
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array 
     auto buf = buffer(ChunkArray(arr), 4, 2);
     assert(!buf.empty);
     assert(buf.front == 10);
-    assert(buf.has(20));
+    assert(buf.lookahead(20));
     foreach(v; 10..40){
+        assert(buf.lookahead(6));
         assert(buf.front == v, text(buf.front, " vs ", v));
         assert(v + 2 >= 40 || buf[2] == v+2);
         assert(v + 5 >= 40 || buf[5] == v+5);
