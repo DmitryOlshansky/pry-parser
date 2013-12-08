@@ -1,6 +1,6 @@
 module dpick.buffer.buffer;
 
-import std.algorithm, std.range;
+import std.algorithm, std.range, std.traits;
 import dpick.buffer.traits;
 
 struct ArrayBuffer(T) {
@@ -12,7 +12,7 @@ struct ArrayBuffer(T) {
     void popFront()
     in {  assert(!empty); }
     body { cur++; }
-    ubyte opIndex(size_t idx){ return data[cur + idx]; }
+    T opIndex(size_t idx){ return data[cur + idx]; }
     @property bool lookahead(size_t n){ return data.length  >= cur + n; }
     void restore(Mark m){ cur = m.ofs; }
     Mark mark(){ return Mark(cur); }
@@ -33,10 +33,18 @@ auto buffer()(ubyte[] data)
 }
 
 auto buffer(T)(T[] data)
-    if(is(T : ubyte))
+    if(is(Unqual!T == ubyte))
 {
     return ArrayBuffer!T(data);
 }
+
+auto buffer(T)(T[] data)
+    if(is(Unqual!T == char))
+{
+    import std.string : representation;
+    return buffer(data.representation);
+}
+
 
 static assert(isBuffer!(ArrayBuffer!ubyte));
 static assert(isBuffer!(ArrayBuffer!(const(ubyte))));

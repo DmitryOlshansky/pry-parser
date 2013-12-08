@@ -13,9 +13,12 @@ enum isBuffer(T) = __traits(compiles, (ref T buf){
         auto m2 = buf.mark();
         auto s = buf.slice(m);
         auto s2 = buf[m .. m2];
-        static assert(isRandomAccessRange!(typeof(s)));
-        static assert(isRandomAccessRange!(typeof(s2)));
-        static assert(is(ElementType!(typeof(s)) : ubyte));
+        alias S = typeof(s);
+        alias S2 = typeof(s2);
+        static assert(isRandomAccessRange!S);
+        static assert(isRandomAccessRange!S2);
+        static assert(is(ElementType!S : ubyte));
+        static assert(is(ElementType!S2 : ubyte));
         buf.restore(m);
     }
 });
