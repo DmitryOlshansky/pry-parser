@@ -9,14 +9,16 @@ enum isBuffer(T) = __traits(compiles, (ref T buf){
         assert(buf[0] == v);
         assert(buf.lookahead(2));
         auto m = buf.mark();
-        buf.popFront();        
+        buf.popFront();
+        auto m2 = buf.mark();
         auto s = buf.slice(m);
+        auto s2 = buf.slice(m, m2);
         static assert(isRandomAccessRange!(typeof(s)));
+        static assert(isRandomAccessRange!(typeof(s2)));
         static assert(is(ElementType!(typeof(s)) : ubyte));
         buf.restore(m);
     }
 });
-
 
 /**
     A mock implementation of Buffer concept.
