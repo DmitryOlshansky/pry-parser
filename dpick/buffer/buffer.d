@@ -19,7 +19,7 @@ struct ArrayBuffer(T) {
     T[] slice(Mark m){
         return m.ofs <= cur ? data[m.ofs .. cur] : data[cur .. m.ofs];
     }
-    T[] slice(Mark m1, Mark m2){
+    T[] opSlice(Mark m1, Mark m2){
         return m1.ofs <= m2.ofs ? data[m1.ofs .. m2.ofs] : data[m2.ofs .. m1.ofs];
     }
 private:
@@ -58,10 +58,10 @@ unittest
     assert(buf.empty);
     auto m2 = buf.mark();
     auto s = buf.slice(m);
-    auto s2 = buf.slice(m2, m);
+    auto s2 = buf[m2 .. m];
     assert(s == [2, 3, 4, 5, 6, 7, 8, 9]);
     assert(s ==  s2);
-    assert(buf.slice(m2, m) == buf.slice(m, m2));
+    assert(buf[m2 .. m] == buf[m .. m2]);
     buf.restore(m);
     assert(buf.front == 2 && buf[1] == 3);
     assert(buf.slice(m2) == s);
@@ -221,7 +221,7 @@ struct GenericBuffer(Input)
         return ofs <= cur ? buffer[ofs .. cur] : buffer[cur .. ofs];
     }
 
-    ubyte[] slice(ref Mark m1, ref Mark m2) {
+    ubyte[] opSlice(ref Mark m1, ref Mark m2) {
         auto ofs1 = offset(m1);
         auto ofs2 = offset(m2);
         return ofs1 <= ofs2 ? buffer[ofs1 .. ofs2] : buffer[ofs1 .. ofs2];
@@ -293,7 +293,7 @@ unittest
             assert(buf.front == v);
             buf.popFront();
         }
-        assert(buf.slice(m, m2).empty);
+        assert(buf[m .. m2].empty);
         assert(equal(buf.slice(m2), buf.slice(m)));
         assert(equal(buf.slice(m), iota(40, 70)));
     }
