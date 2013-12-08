@@ -2649,103 +2649,24 @@ unittest
 
 alias Kickstart = ShiftOr;
 
-//Simple UTF-string abstraction compatible with stream interface
-struct Input(Char)
-    if(is(Char :dchar))
-{
-    alias DataIndex = size_t;
-    enum { isLoopback = false };
-    alias String = const(Char)[];
-    String _origin;
-    size_t _index;
-
-    //constructs Input object out of plain string
-    this(String input, size_t idx = 0)
-    {
-        _origin = input;
-        _index = idx;
-    }
-
-    //codepoint at current stream position
-    bool nextChar(ref dchar res, ref size_t pos)
-    {
-        pos = _index;
-        if(_index == _origin.length)
-            return false;
-        res = std.utf.decode(_origin, _index);
-        return true;
-    }
-    @property bool atEnd(){
-        return _index == _origin.length;
-    }
-    bool search(Kickstart)(ref Kickstart kick, ref dchar res, ref size_t pos)
-    {
-        size_t idx = kick.search(_origin, _index);
-        _index = idx;
-        return nextChar(res, pos);
-    }
-
-    //index of at End position
-    @property size_t lastIndex(){   return _origin.length; }
-
-    //support for backtracker engine, might not be present
-    void reset(size_t index){   _index = index;  }
-
-    String opSlice(size_t start, size_t end){   return _origin[start..end]; }
-
-    struct BackLooper
-    {
-        alias DataIndex = size_t;
-        enum { isLoopback = true };
-        String _origin;
-        size_t _index;
-        this(Input input, size_t index)
-        {
-            _origin = input._origin;
-            _index = index;
-        }
-        @trusted bool nextChar(ref dchar res,ref size_t pos)
-        {
-            pos = _index;
-            if(_index == 0)
-                return false;
-
-            res = _origin[0.._index].back;
-            _index -= std.utf.strideBack(_origin, _index);
-
-            return true;
-        }
-        @property atEnd(){ return _index == 0 || _index == std.utf.strideBack(_origin, _index); }
-        auto loopBack(size_t index){   return Input(_origin, index); }
-
-        //support for backtracker engine, might not be present
-        //void reset(size_t index){   _index = index ? index-std.utf.strideBack(_origin, index) : 0;  }
-        void reset(size_t index){   _index = index;  }
-
-        String opSlice(size_t start, size_t end){   return _origin[end..start]; }
-        //index of at End position
-        @property size_t lastIndex(){   return 0; }
-    }
-    auto loopBack(size_t index){   return BackLooper(this, index); }
-}
-
 
 //State of VM thread
-struct Thread(DataIndex)
+struct Thread(Mark)
 {
     Thread* next;    //intrusive linked list
     uint pc;
     uint counter;    //loop counter
     uint uopCounter; //counts micro operations inside one macro instruction (e.g. BackRef)
-    Group!DataIndex[1] matches;
+    Group!Mark[1] matches;
 }
 
 //head-tail singly-linked list
-struct ThreadList(DataIndex)
+struct ThreadList(Mark)
 {
-    Thread!DataIndex* tip = null, toe = null;
+    alias T = Thread!Mark;
+    T* tip = null, toe = null;
     //add new thread to the start of list
-    void insertFront(Thread!DataIndex* t)
+    void insertFront(T* t)
     {
         if(tip)
         {
@@ -2759,7 +2680,7 @@ struct ThreadList(DataIndex)
         }
     }
     //add new thread to the end of list
-    void insertBack(Thread!DataIndex* t)
+    void insertBack(T* t)
     {
         if(toe)
         {
@@ -2771,7 +2692,7 @@ struct ThreadList(DataIndex)
         toe.next = null;
     }
     //move head element out of list
-    Thread!DataIndex* fetch()
+    T* fetch()
     {
         auto t = tip;
         if(tip == toe)
@@ -2783,10 +2704,10 @@ struct ThreadList(DataIndex)
     //non-destructive iteration of ThreadList
     struct ThreadRange
     {
-        const(Thread!DataIndex)* ct;
+        const(T)* ct;
         this(ThreadList tlist){ ct = tlist.tip; }
         @property bool empty(){ return ct is null; }
-        @property const(Thread!DataIndex)* front(){ return ct; }
+        @property const(T)* front(){ return ct; }
         @property popFront()
         {
             assert(ct);
@@ -2806,38 +2727,40 @@ struct ThreadList(DataIndex)
 //direction parameter for thompson one-shot match evaluator
 enum OneShot { Fwd, Bwd };
 
+import dpick.buffer;
+
+
 /+
    Thomspon matcher does all matching in lockstep,
    never looking at the same char twice
 +/
-@trusted struct ThompsonMatcher(Char, Stream = Input!Char)
-    if(is(Char : dchar))
+@trusted struct ThompsonMatcher(Char, Buffer)
+    if(is(Char : dchar) && isBuffer!Buffer)
 {
-    alias Stream.DataIndex DataIndex;
-    Thread!DataIndex* freelist;
-    ThreadList!DataIndex clist, nlist;
-    DataIndex[] merge;
-    Group!DataIndex[] backrefed;
-    Regex!Char re;           //regex program
-    Stream s;
+    alias Mark = Buffer.Mark;
+    alias Re = Regex!Char;
+    alias Thrd = Thread!Mark;
+    alias ThrdList = ThreadList!Mark;
+    alias G = Group!Mark;
+    Thrd* freelist;
+    ThrdList clist, nlist;
+    size_t[] merge;
+    G[] backrefed;
+    Re re;           //regex program
+    Buffer* buf;
     dchar front;
-    DataIndex index;
-    DataIndex genCounter;    //merge trace counter, goes up on every dchar
+    size_t genCounter;    //merge trace counter, goes up on every dchar
     size_t threadSize;
     bool matched;
     bool exhausted;
-    static if(__traits(hasMember,Stream, "search"))
-    {
-        enum kicked = true;
-    }
-    else
-        enum kicked = false;
+    Mark index; //index before currently decoded char
+    enum kicked = false;
 
-    static size_t getThreadSize(const ref Regex!Char re)
+    static size_t getThreadSize(const ref Re re)
     {
         return re.ngroup
-            ? (Thread!DataIndex).sizeof + (re.ngroup-1)*(Group!DataIndex).sizeof
-            : (Thread!DataIndex).sizeof - (Group!DataIndex).sizeof;
+            ? Thrd.sizeof + (re.ngroup-1)*G.sizeof
+            : Thrd.sizeof - G.sizeof;
     }
 
     static size_t initialMemory(const ref Regex!Char re)
@@ -2846,18 +2769,17 @@ enum OneShot { Fwd, Bwd };
     }
 
     //true if it's start of input
-    @property bool atStart(){   return index == 0; }
+    @property bool atStart(){ return index == Mark.init; }
 
     //true if it's end of input
-    @property bool atEnd(){  return index == s.lastIndex && s.atEnd; }
+    @property bool atEnd(){  return buf.empty; }
 
     bool next()
     {
-        if(!s.nextChar(front, index))
-        {
-            index =  s.lastIndex;
+        if(!buf.empty)
             return false;
-        }
+        index = buf.mark();
+        front = decodeUtf8(*buf);
         return true;
     }
 
@@ -2881,22 +2803,22 @@ enum OneShot { Fwd, Bwd };
         prepareFreeList(re.threadCount, memory);
         if(re.hotspotTableSize)
         {
-            merge = arrayInChunk!(DataIndex)(re.hotspotTableSize, memory);
+            merge = arrayInChunk!(size_t)(re.hotspotTableSize, memory);
             merge[] = 0;
         }
     }
 
-    this()(Regex!Char program, Stream stream, void[] memory)
+    this()(Regex!Char program, Buffer* buffer, void[] memory)
     {
         re = program;
-        s = stream;
+        buf = buffer;
         initExternalMemory(memory);
         genCounter = 0;
     }
 
-    this(S)(ref ThompsonMatcher!(Char,S) matcher, Bytecode[] piece, Stream stream)
+    this(S)(ref ThompsonMatcher!(Char,S) matcher, Bytecode[] piece, Buffer* buffer)
     {
-        s = stream;
+        buf = buffer;
         re = matcher.re;
         re.ir = piece;
         threadSize = matcher.threadSize;
@@ -2909,10 +2831,10 @@ enum OneShot { Fwd, Bwd };
 
     auto fwdMatcher()(Bytecode[] piece)
     {
-        auto m = ThompsonMatcher!(Char, Stream)(this, piece, s);
+        auto m = ThompsonMatcher!(Char, Buffer)(this, piece, buf);
         return m;
     }
-
+/*
     auto bwdMatcher()(Bytecode[] piece)
     {
         alias BackLooper = typeof(s.loopBack(index));
@@ -2920,7 +2842,7 @@ enum OneShot { Fwd, Bwd };
         m.next();
         return m;
     }
-
+*/
     auto dupTo(void[] memory)
     {
         typeof(this) tmp = this;//bitblit
@@ -2936,7 +2858,7 @@ enum OneShot { Fwd, Bwd };
     }
 
     //match the input and fill matches
-    bool match(Group!DataIndex[] matches)
+    bool match(G[] matches)
     {
         debug(std_regex_matcher)
             writeln("------------------------------------------");
@@ -2978,7 +2900,7 @@ enum OneShot { Fwd, Bwd };
                         writeln();
                     }
                 }
-                for(Thread!DataIndex* t = clist.fetch(); t; t = clist.fetch())
+                for(Thrd* t = clist.fetch(); t; t = clist.fetch())
                 {
                     eval!true(t, matches);
                 }
@@ -2990,7 +2912,7 @@ enum OneShot { Fwd, Bwd };
                     break;//not a partial match for sure
                 }
                 clist = nlist;
-                nlist = (ThreadList!DataIndex).init;
+                nlist = (ThrdList).init;
                 if(clist.tip is null)
                 {
                     if(!searchFn())
@@ -3007,7 +2929,7 @@ enum OneShot { Fwd, Bwd };
         genCounter++; //increment also on each end
         debug(std_regex_matcher) writefln("Threaded matching threads at end");
         //try out all zero-width posibilities
-        for(Thread!DataIndex* t = clist.fetch(); t; t = clist.fetch())
+        for(Thrd* t = clist.fetch(); t; t = clist.fetch())
         {
             eval!false(t, matches);
         }
@@ -3016,7 +2938,7 @@ enum OneShot { Fwd, Bwd };
         if(matched)
         {//in case NFA found match along the way
          //and last possible longer alternative ultimately failed
-            s.reset(matches[0].end);//reset to last successful match
+            buf.restore(matches[0].end);//reset to last successful match
             next();//and reload front character
             //--- here the exact state of stream was restored ---
             exhausted = atEnd || !(re.flags & RegexOption.global);
@@ -3030,7 +2952,7 @@ enum OneShot { Fwd, Bwd };
     /+
         handle succesful threads
     +/
-    void finish(const(Thread!DataIndex)* t, Group!DataIndex[] matches)
+    void finish(const(Thrd)* t, G[] matches)
     {
         matches.ptr[0..re.ngroup] = t.matches.ptr[0..re.ngroup];
         debug(std_regex_matcher)
@@ -3049,9 +2971,9 @@ enum OneShot { Fwd, Bwd };
         match thread against codepoint, cutting trough all 0-width instructions
         and taking care of control flow, then add it to nlist
     +/
-    void eval(bool withInput)(Thread!DataIndex* t, Group!DataIndex[] matches)
+    void eval(bool withInput)(Thrd* t, G[] matches)
     {
-        ThreadList!DataIndex worklist;
+        ThrdList worklist;
         debug(std_regex_matcher) writeln("---- Evaluating thread");
         for(;;)
         {
@@ -3074,7 +2996,8 @@ enum OneShot { Fwd, Bwd };
                 debug(std_regex_matcher) writeln("Finished thread ", matches);
                 return;
             case IR.Wordboundary:
-                dchar back;
+                assert(0, "Not yet ready with buffer");
+                /*dchar back;
                 DataIndex bi;
                 //at start & end of input
                 if(atStart && wordTrie[front])
@@ -3102,9 +3025,10 @@ enum OneShot { Fwd, Bwd };
                 t = worklist.fetch();
                 if(!t)
                     return;
-                break;
+                break;*/
             case IR.Notwordboundary:
-                dchar back;
+                assert(0, "Not yet ready with buffer");
+                /*dchar back;
                 DataIndex bi;
                 //at start & end of input
                 if(atStart && wordTrie[front])
@@ -3138,9 +3062,10 @@ enum OneShot { Fwd, Bwd };
                     }
                 }
                 t.pc += IRL!(IR.Wordboundary);
-                break;
+                break;*/
             case IR.Bol:
-                dchar back;
+                assert(0, "Not yet ready with buffer");
+                /*dchar back;
                 DataIndex bi;
                 if(atStart
                     ||( (re.flags & RegexOption.multiline)
@@ -3156,9 +3081,10 @@ enum OneShot { Fwd, Bwd };
                     if(!t)
                         return;
                 }
-                break;
+                break;*/
             case IR.Eol:
-                debug(std_regex_matcher) writefln("EOL (front 0x%x) %s",  front, s[index..s.lastIndex]);
+                assert(0, "Not yet ready with buffer");
+                /*debug(std_regex_matcher) writefln("EOL (front 0x%x) %s",  front, s[index..s.lastIndex]);
                 dchar back;
                 DataIndex bi;
                 //no matching inside \r\n
@@ -3175,7 +3101,7 @@ enum OneShot { Fwd, Bwd };
                     if(!t)
                         return;
                 }
-                break;
+                break;*/
             case IR.InfiniteStart, IR.InfiniteQStart:
                 t.pc += re.ir[t.pc].data + IRL!(IR.InfiniteStart);
                 goto case IR.InfiniteEnd; //both Q and non-Q
@@ -3326,7 +3252,7 @@ enum OneShot { Fwd, Bwd };
                 break;
             case IR.Backref:
                 uint n = re.ir[t.pc].data;
-                Group!DataIndex* source = re.ir[t.pc].localRef ? t.matches.ptr : backrefed.ptr;
+                G* source = re.ir[t.pc].localRef ? t.matches.ptr : backrefed.ptr;
                 assert(source);
                 if(source[n].begin == source[n].end)//zero-width Backref!
                 {
@@ -3334,12 +3260,14 @@ enum OneShot { Fwd, Bwd };
                 }
                 else static if(withInput)
                 {
-                    size_t idx = source[n].begin + t.uopCounter;
-                    size_t end = source[n].end;
-                    if(s[idx..end].front == front)
+                    //WTF with 
+                    auto r = (*buf)[source[n].begin .. source[n].end];
+                    auto s = cast(const(char)[])r[t.uopCounter .. $];
+
+                    if(decodeFront(s) == front)
                     {
-                        t.uopCounter += std.utf.stride(s[idx..end], 0);
-                        if(t.uopCounter + source[n].begin == source[n].end)
+                        t.uopCounter += r.length - s.length;
+                        if(s.empty)
                         {//last codepoint
                             t.pc += IRL!(IR.Backref);
                             t.uopCounter = 0;
@@ -3364,32 +3292,7 @@ enum OneShot { Fwd, Bwd };
                 break;
             case IR.LookbehindStart:
             case IR.NeglookbehindStart:
-                uint len = re.ir[t.pc].data;
-                uint ms = re.ir[t.pc + 1].raw, me = re.ir[t.pc + 2].raw;
-                uint end = t.pc + len + IRL!(IR.LookbehindEnd) + IRL!(IR.LookbehindStart);
-                bool positive = re.ir[t.pc].code == IR.LookbehindStart;
-                static if(Stream.isLoopback)
-                    auto matcher = fwdMatcher(re.ir[t.pc .. end]);
-                else
-                    auto matcher = bwdMatcher(re.ir[t.pc .. end]);
-                matcher.re.ngroup = re.ir[t.pc+2].raw - re.ir[t.pc+1].raw;
-                matcher.backrefed = backrefed.empty ? t.matches : backrefed;
-                //backMatch
-                bool nomatch = (matcher.matchOneShot(t.matches, IRL!(IR.LookbehindStart))
-                    == MatchResult.Match) ^ positive;
-                freelist = matcher.freelist;
-                genCounter = matcher.genCounter;
-                if(nomatch)
-                {
-                    recycle(t);
-                    t = worklist.fetch();
-                    if(!t)
-                        return;
-                    break;
-                }
-                else
-                    t.pc = end;
-                break;
+                assert(0); //not specified yet with buffers
             case IR.LookaheadStart:
             case IR.NeglookaheadStart:
                 auto save = index;
@@ -3397,9 +3300,9 @@ enum OneShot { Fwd, Bwd };
                 uint ms = re.ir[t.pc+1].raw, me = re.ir[t.pc+2].raw;
                 uint end = t.pc+len+IRL!(IR.LookaheadEnd)+IRL!(IR.LookaheadStart);
                 bool positive = re.ir[t.pc].code == IR.LookaheadStart;
-                static if(Stream.isLoopback)
+                /*static if(Stream.isLoopback)
                     auto matcher = bwdMatcher(re.ir[t.pc .. end]);
-                else
+                else*/
                     auto matcher = fwdMatcher(re.ir[t.pc .. end]);
                 matcher.re.ngroup = me - ms;
                 matcher.backrefed = backrefed.empty ? t.matches : backrefed;
@@ -3407,7 +3310,7 @@ enum OneShot { Fwd, Bwd };
                     == MatchResult.Match) ^ positive;
                 freelist = matcher.freelist;
                 genCounter = matcher.genCounter;
-                s.reset(index);
+                buf.restore(index);
                 next();
                 if(nomatch)
                 {
@@ -3524,15 +3427,15 @@ enum OneShot { Fwd, Bwd };
     }
     enum uint RestartPc = uint.max;
     //match the input, evaluating IR without searching
-    MatchResult matchOneShot(Group!DataIndex[] matches, uint startPc = 0)
+    MatchResult matchOneShot(G[] matches, uint startPc = 0)
     {
         debug(std_regex_matcher)
         {
             writefln("---------------single shot match ----------------- ");
         }
             alias eval evalFn;
-        assert(clist == (ThreadList!DataIndex).init || startPc == RestartPc); // incorrect after a partial match
-        assert(nlist == (ThreadList!DataIndex).init || startPc == RestartPc);
+        assert(clist == (ThrdList).init || startPc == RestartPc); // incorrect after a partial match
+        assert(nlist == (ThrdList).init || startPc == RestartPc);
             startPc = startPc;
         if(!atEnd)//if no char
         {
@@ -3557,7 +3460,7 @@ enum OneShot { Fwd, Bwd };
                         assert(t);
                     }
                 }
-                for(Thread!DataIndex* t = clist.fetch(); t; t = clist.fetch())
+                for(Thrd* t = clist.fetch(); t; t = clist.fetch())
                 {
                     evalFn!true(t, matches);
                 }
@@ -3567,7 +3470,7 @@ enum OneShot { Fwd, Bwd };
                     break;//not a partial match for sure
                 }
                 clist = nlist;
-                nlist = (ThreadList!DataIndex).init;
+                nlist = (ThrdList).init;
                 if(!next())
                 {
                     if (!atEnd) return MatchResult.PartialMatch;
@@ -3579,7 +3482,7 @@ enum OneShot { Fwd, Bwd };
         genCounter++; //increment also on each end
         debug(std_regex_matcher) writefln("-- Matching threads at end");
         //try out all zero-width posibilities
-        for(Thread!DataIndex* t = clist.fetch(); t; t = clist.fetch())
+        for(Thrd* t = clist.fetch(); t; t = clist.fetch())
         {
             evalFn!false(t, matches);
         }
@@ -3590,10 +3493,10 @@ enum OneShot { Fwd, Bwd };
     }
 
     //get a dirty recycled Thread
-    Thread!DataIndex* allocate()
+    Thrd* allocate()
     {
         assert(freelist, "not enough preallocated memory");
-        Thread!DataIndex* t = freelist;
+        Thrd* t = freelist;
         freelist = freelist.next;
         return t;
     }
@@ -3603,22 +3506,22 @@ enum OneShot { Fwd, Bwd };
     {
         void[] mem = memory[0 .. threadSize*size];
         memory = memory[threadSize * size .. $];
-        freelist = cast(Thread!DataIndex*)&mem[0];
+        freelist = cast(Thrd*)&mem[0];
         size_t i;
         for(i = threadSize; i < threadSize*size; i += threadSize)
-            (cast(Thread!DataIndex*)&mem[i-threadSize]).next = cast(Thread!DataIndex*)&mem[i];
-        (cast(Thread!DataIndex*)&mem[i-threadSize]).next = null;
+            (cast(Thrd*)&mem[i-threadSize]).next = cast(Thrd*)&mem[i];
+        (cast(Thrd*)&mem[i-threadSize]).next = null;
     }
 
     //dispose a thread
-    void recycle(Thread!DataIndex* t)
+    void recycle(Thrd* t)
     {
         t.next = freelist;
         freelist = t;
     }
 
     //dispose list of threads
-    void recycle(ref ThreadList!DataIndex list)
+    void recycle(ref ThrdList list)
     {
         auto t = list.tip;
         while(t)
@@ -3631,7 +3534,7 @@ enum OneShot { Fwd, Bwd };
     }
 
     //creates a copy of master thread with given pc
-    Thread!DataIndex* fork(Thread!DataIndex* master, uint pc, uint counter)
+    Thrd* fork(Thrd* master, uint pc, uint counter)
     {
         auto t = allocate();
         t.matches.ptr[0..re.ngroup] = master.matches.ptr[0..re.ngroup];
@@ -3642,10 +3545,10 @@ enum OneShot { Fwd, Bwd };
     }
 
     //creates a start thread
-    Thread!DataIndex* createStart(DataIndex index, uint pc = 0)
+    Thrd* createStart(Mark index, uint pc = 0)
     {
         auto t = allocate();
-        t.matches.ptr[0..re.ngroup] = (Group!DataIndex).init;
+        t.matches.ptr[0..re.ngroup] = G.init;
         t.matches[0].begin = index;
         t.pc = pc;
         t.counter = 0;
@@ -3684,25 +3587,25 @@ enum OneShot { Fwd, Bwd };
     }
     ----
 +/
-@trusted public struct Captures(R, DIndex = size_t)
-    if(isSomeString!R)
+@trusted public struct Captures(Char, Buffer)
+    if(is(Char : dchar) && isBuffer!Buffer)
 {//@trusted because of union inside
-    alias DIndex DataIndex;
-    alias R String;
+    alias Mark = Buffer.Mark;
+    alias G = Group!Mark;
 private:
-    R _input;
+    Buffer* _input;
     bool _empty;
     enum smallString = 3;
     union
     {
-        Group!DataIndex[] big_matches;
-        Group!DataIndex[smallString] small_matches;
+        G[] big_matches;
+        G[smallString] small_matches;
     }
     uint _f, _b;
     uint _ngroup;
     NamedGroup[] _names;
 
-    this()(R input, uint ngroups, NamedGroup[] named)
+    this()(Buffer* input, uint ngroups, NamedGroup[] named)
     {
         _input = input;
         _ngroup = ngroups;
@@ -3712,7 +3615,7 @@ private:
         _f = 0;
     }
 
-    this(alias Engine)(ref RegexMatch!(R,Engine) rmatch)
+    this(alias Engine)(ref RegexMatch!(Buffer, Engine) rmatch)
     {
         _input = rmatch._input;
         _ngroup = rmatch._engine.re.ngroup;
@@ -3722,7 +3625,7 @@ private:
         _f = 0;
     }
 
-    @property Group!DataIndex[] matches()
+    @property G[] matches()
     {
        return _ngroup > smallString ? big_matches : small_matches[0 .. _ngroup];
     }
@@ -3730,41 +3633,45 @@ private:
     void newMatches()
     {
         if(_ngroup > smallString)
-            big_matches = new Group!DataIndex[_ngroup];
+            big_matches = new G[_ngroup];
+    }
+
+    @property auto nullRange(){
+        return typeof(_input.slice(matches[0].begin)).init;
     }
 
 public:
     ///Slice of input prior to the match.
-    @property R pre()
+    /*@property auto pre()
     {
-        return _empty ? _input[] : _input[0 .. matches[0].begin];
-    }
+        return _empty ? nullRange: (*_input)[0 .. matches[0].begin];
+    }*/
 
     ///Slice of input immediately after the match.
-    @property R post()
+    /*@property auto post()
     {
-        return _empty ? _input[] : _input[matches[0].end .. $];
-    }
+        return _empty ? nullRange : (*_input)[matches[0].end .. $];
+    }*/
 
     ///Slice of matched portion of input.
-    @property R hit()
+    @property auto hit()
     {
         assert(!_empty);
-        return _input[matches[0].begin .. matches[0].end];
+        return (*_input)[matches[0].begin .. matches[0].end];
     }
 
     ///Range interface.
-    @property R front()
+    @property auto front()
     {
         assert(!empty);
-        return _input[matches[_f].begin .. matches[_f].end];
+        return (*_input)[matches[_f].begin .. matches[_f].end];
     }
 
     ///ditto
-    @property R back()
+    @property auto back()
     {
         assert(!empty);
-        return _input[matches[_b - 1].begin .. matches[_b - 1].end];
+        return (*_input)[matches[_b - 1].begin .. matches[_b - 1].end];
     }
 
     ///ditto
@@ -3785,12 +3692,12 @@ public:
     @property bool empty() const { return _empty || _f >= _b; }
 
     ///ditto
-    R opIndex()(size_t i) /*const*/ //@@@BUG@@@
+    auto opIndex()(size_t i) /*const*/ //@@@BUG@@@
     {
         assert(_f + i < _b,text("requested submatch number ", i," is out of range"));
-        assert(matches[_f + i].begin <= matches[_f + i].end, 
-            text("wrong match: ", matches[_f + i].begin, "..", matches[_f + i].end));
-        return _input[matches[_f + i].begin .. matches[_f + i].end];
+        //assert(matches[_f + i].begin <= matches[_f + i].end, 
+        //    text("wrong match: ", matches[_f + i].begin, "..", matches[_f + i].end));
+        return (*_input)[matches[_f + i].begin .. matches[_f + i].end];
     }
 
     /++
@@ -3814,7 +3721,7 @@ public:
         if(isSomeString!String)
     {
         size_t index = lookupNamedGroup(_names, i);
-        return _input[matches[index].begin .. matches[index].end];
+        return (*_input)[matches[index].begin .. matches[index].end];
     }
 
     ///Number of matches in this object.
@@ -3834,25 +3741,24 @@ public:
     and is automatically deduced in a call to $(D match)/$(D bmatch).
 +/
 @trusted public struct RegexMatch(R, alias Engine = ThompsonMatcher)
-    if(isSomeString!R)
+    if(isBuffer!R)
 {
 private:
-    alias BasicElementOf!R Char;
-    alias Engine!Char EngineType;
+    alias Engine!(char, R) EngineType;
     EngineType _engine;
-    R _input;
-    Captures!(R,EngineType.DataIndex) _captures;
+    R* _input;
+    Captures!(char, R) _captures;
     void[] _memory;//is ref-counted
 
-    this(RegEx)(R input, RegEx prog)
+    this(RegEx)(ref R input, RegEx prog)
     {
-        _input = input;
+        _input = &input;
         immutable size = EngineType.initialMemory(prog)+size_t.sizeof;
         _memory = (enforce(malloc(size))[0..size]);
         scope(failure) free(_memory.ptr);
         *cast(size_t*)_memory.ptr = 1;
-        _engine = EngineType(prog, Input!Char(input), _memory[size_t.sizeof..$]);
-        _captures = Captures!(R,EngineType.DataIndex)(this);
+        _engine = EngineType(prog, _input, _memory[size_t.sizeof..$]);
+        _captures = Captures!(char, R)(this);
         _captures._empty = !_engine.match(_captures.matches);
         debug(std_regex_allocation) writefln("RefCount (ctor): %x %d", _memory.ptr, counter);
     }
@@ -3880,7 +3786,7 @@ public:
     }
 
     ///Shorthands for front.pre, front.post, front.hit.
-    @property R pre()
+/*    @property R pre()
     {
         return _captures.pre;
     }
@@ -3890,9 +3796,9 @@ public:
     {
         return _captures.post;
     }
-
+*/
     ///ditto
-    @property R hit()
+    @property auto hit()
     {
         return _captures.hit;
     }
@@ -3945,16 +3851,16 @@ public:
 
 }
 
-private @trusted auto matchOnce(alias Engine, RegEx, R)(R input, RegEx re)
+private @trusted auto matchOnce(alias Engine, RegEx, Buffer)
+    (ref Buffer input, RegEx re) if(isBuffer!Buffer)
 {
-    alias BasicElementOf!R Char;
-    alias Engine!Char EngineType;
-
+    alias Char = char;
+    alias EngineType = Engine!(Char, Buffer);
     size_t size = EngineType.initialMemory(re);
     void[] memory = enforce(malloc(size))[0..size];
     scope(exit) free(memory.ptr);
-    auto captures = Captures!(R, EngineType.DataIndex)(input, re.ngroup, re.dict);
-    auto engine = EngineType(re, Input!Char(input), memory);        
+    auto captures = Captures!(Char, Buffer)(&input, re.ngroup, re.dict);
+    auto engine = EngineType(re, &input, memory);        
     captures._empty = !engine.match(captures.matches);
     return captures;
 }
@@ -3969,8 +3875,10 @@ unittest
 {
     //sanity checks for new API
     auto re = regex("abc");
-    assert(!"abc".matchOnce!(ThompsonMatcher)(re).empty);
-    assert("abc".matchOnce!(ThompsonMatcher)(re)[0] == "abc");
+    auto b = buffer("abc".representation);
+    auto b2 = buffer("abc".representation);
+    assert(!b.matchOnce!(ThompsonMatcher)(re).empty);
+    assert(b2.matchOnce!(ThompsonMatcher)(re)[0] == "abc");
 }
 /++
     Compile regular expression pattern for the later execution.
@@ -4005,67 +3913,31 @@ template isRegexFor(RegEx, R)
     enum isRegexFor = is(RegEx == Regex!(BasicElementOf!R));
 }
 
-/++
-    Find the first (leftmost) slice of the $(D input) that 
-    matches the pattern $(D re). This function picks the most suitable
-    regular expression engine depending on the pattern properties.
 
-    $(D re) parameter can be one of three types:
-    $(UL
-      $(LI Plain string, in which case it's compiled to bytecode before matching. )
-      $(LI Regex!char (wchar/dchar) that contains a pattern in the form of
-        compiled  bytecode. )
-      $(LI StaticRegex!char (wchar/dchar) that contains a pattern in the form of
-        compiled native machine code. )
-    )
-
-    Returns: 
-    $(LREF Captures) containing the extent of a match together with all submatches 
-    if there was a match, otherwise an empty $(LREF Captures) object.
-+/
-public auto matchFirst(R, RegEx)(R input, RegEx re)
-    if(isSomeString!R && is(RegEx == Regex!(BasicElementOf!R)))
+//UTF-8 buffer
+public auto matchFirst(R, RegEx)(ref R input, RegEx re)
+    if(isBuffer!R && is(RegEx == Regex!(char)))
 {
     return matchOnce!ThompsonMatcher(input, re);
 }
 
 ///ditto
-public auto matchFirst(R, String)(R input, String re)
-    if(isSomeString!R && isSomeString!String)
+public auto matchFirst(R, String)(ref R input, String re)
+    if(isBuffer!R && isSomeString!String)
 {
     return matchOnce!ThompsonMatcher(input, regex(re));
 }
 
-/++
-    Initiate a search for all non-overlapping matches to the pattern $(D re)
-    in the given $(D input). The result is a lazy range of matches generated 
-    as they are encountered in the input going left to right.
 
-    This function picks the most suitable regular expression engine 
-    depending on the pattern properties.
-
-    $(D re) parameter can be one of three types:
-    $(UL
-      $(LI Plain string, in which case it's compiled to bytecode before matching. )
-      $(LI Regex!char (wchar/dchar) that contains a pattern in the form of
-        compiled  bytecode. )
-      $(LI StaticRegex!char (wchar/dchar) that contains a pattern in the form of
-        compiled native machine code. )
-    )
-
-    Returns: 
-    $(LREF RegexMatch) object that represents matcher state 
-    after the first match was found or an empty one if not present. 
-+/
 public auto matchAll(R, RegEx)(R input, RegEx re)
-    if(isSomeString!R && is(RegEx == Regex!(BasicElementOf!R)))
+    if(isBuffer!R && is(RegEx == Regex!(char)))
 {
     return matchMany!ThompsonMatcher(input, re);
 }
 
 ///ditto
 public auto matchAll(R, String)(R input, String re)
-    if(isSomeString!R && isSomeString!String)
+    if(isBuffer!R && isSomeString!String)
 {
     return matchMany!ThompsonMatcher(input, regex(re));
 }
@@ -4073,9 +3945,9 @@ public auto matchAll(R, String)(R input, String re)
 // another set of tests just to cover the new API
 @system unittest
 {
-    foreach(String; TypeTuple!(string, wstring, const(dchar)[]))
-    {
-        auto str1 = "blah-bleh".to!String();
+    foreach(String; TypeTuple!(string))
+    {        
+        auto str1 = buffer("blah-bleh".to!String());
         auto pat1 = "bl[ae]h".to!String();
         auto mf = matchFirst(str1, pat1);
         assert(mf.equal(["blah".to!String()]));
@@ -4083,7 +3955,7 @@ public auto matchAll(R, String)(R input, String re)
         assert(mAll.equal!((a,b) => a.equal(b))
             ([["blah".to!String()], ["bleh".to!String()]]));
 
-        auto str2 = "1/03/12 - 3/03/12".to!String();
+        auto str2 = "1/03/12 - 3/03/12".to!String().buffer;
         auto pat2 = regex(r"(\d+)/(\d+)/(\d+)".to!String());
         auto mf2 = matchFirst(str2, pat2);
         assert(mf2.equal(["1/03/12", "1", "03", "12"].map!(to!String)()));
@@ -4175,7 +4047,7 @@ public class RegexException : Exception
         super(msg, file, line);
     }
 }
-
+/+
 //--------------------- TEST SUITE ---------------------------------
 version(unittest)
 {
@@ -4483,7 +4355,7 @@ unittest
 //mixed lookaround
         TestVectors(   `a(?<=a(?=b))b`,    "ab", "y",      "$&", "ab"),
         TestVectors(   `a(?<=a(?!b))c`,    "ac", "y",      "$&", "ac"),
-        ];
+    ];
     string produceExpected(M,String)(auto ref M m, String fmt)
     {
         auto app = appender!(String)();
@@ -4542,3 +4414,4 @@ unittest
 }
 
 }//version(unittest)
++/
