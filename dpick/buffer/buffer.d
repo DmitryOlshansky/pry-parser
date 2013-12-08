@@ -12,7 +12,7 @@ struct ArrayBuffer(T) {
     void popFront()
     in {  assert(!empty); }
     body { cur++; }
-    ubyte opIndex(size_t idx){ return data[cur+idx]; }
+    ubyte opIndex(size_t idx){ return data[cur + idx]; }
     @property bool lookahead(size_t n){ return data.length  >= cur + n; }
     void restore(Mark m){ cur = m.ofs; }
     Mark mark(){ return Mark(cur); }
@@ -105,10 +105,10 @@ struct GenericBuffer(Input)
     }
 
     this(Input inp, size_t chunk, size_t initial) {
-        assert((chunk & (chunk-1)) == 0);
+        assert((chunk & (chunk - 1)) == 0);
         chunkSize = chunk;
         input = move(inp);
-        buffer = new ubyte[initial*chunkSize]; //TODO: revisit with std.allocator
+        buffer = new ubyte[initial * chunkSize]; //TODO: revisit with std.allocator
         pinning = pinningRBT();
         fillBuffer(0);
     }
@@ -136,7 +136,7 @@ struct GenericBuffer(Input)
     ubyte opIndex(size_t idx) {
         assert(cur + idx < buffer.length, 
             "Buffer overrun while indexing - was lookahead called?");
-        return buffer[cur+idx];
+        return buffer[cur + idx];
     }
 
     @property bool lookahead(size_t n) {
@@ -160,7 +160,7 @@ struct GenericBuffer(Input)
         auto start = pinning.empty ? cur & ~(chunkSize-1) : 
                 chunkSize*(pinning.lowerBound - cast(size_t)(mileage/chunkSize));
         if (start >= extra + chunkSize-1) {
-            copy(buffer[start..$], buffer[0..$-start]);
+            copy(buffer[start..$], buffer[0 .. $ - start]);
             mileage += start;
             cur -= start;
             //all after buffer.length - start is free space
@@ -180,9 +180,9 @@ struct GenericBuffer(Input)
     // read up to the end of buffer, starting at start; shorten on last read
     void fillBuffer(size_t start)
     {
-        size_t got = input.read(buffer[start..$]);
+        size_t got = input.read(buffer[start .. $]);
         if (got + start < buffer.length) {            
-            buffer = buffer[0..got+start];
+            buffer = buffer[0 .. got + start];
             if(input.eof)
                 last = true;
             else
@@ -195,17 +195,18 @@ struct GenericBuffer(Input)
     }
 
     size_t page()(ulong absIdx) {
-        return cast(size_t)(absIdx/chunkSize);
+        return cast(size_t)(absIdx / chunkSize);
     }
 
     @property Mark mark() {
-        auto m = Mark(mileage+cur, &this);
+        auto m = Mark(mileage + cur, &this);
         pinning.add(page(m.pos));
         return m;
     }
 
     ubyte[] slice(ref Mark m) {
-        return buffer[offset(m)..cur];
+        auto ofs = offset(m);
+        return ofs <= cur ? buffer[ofs .. cur] : buffer[cur .. ofs];
     }
 
     void restore(ref Mark m) {

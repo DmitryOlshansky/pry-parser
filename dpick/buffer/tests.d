@@ -42,6 +42,8 @@ unittest
         assert(equal(buf.slice(m2), buf.slice(m)));
         assert(equal(buf.slice(m), iota(40, 120)));
         assert(equal(buf.slice(m3), iota(100, 120)));
+        buf.restore(m2);
+        assert(equal(buf.slice(m3), iota(40, 100)));
         buf.restore(m3);
     }
     auto m = buf.mark();
