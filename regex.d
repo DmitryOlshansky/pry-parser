@@ -2776,10 +2776,12 @@ import dpick.buffer;
 
     bool next()
     {
-        if(!buf.empty)
+        if(buf.empty)
             return false;
         index = buf.mark();
+        import std.stdio;
         front = decodeUtf8(*buf);
+        writeln(front);
         return true;
     }
 
@@ -3875,10 +3877,11 @@ unittest
 {
     //sanity checks for new API
     auto re = regex("abc");
-    auto b = buffer("abc".representation);
-    auto b2 = buffer("abc".representation);
+    auto b = buffer("abc");
+    auto b2 = buffer("abc");
     assert(!b.matchOnce!(ThompsonMatcher)(re).empty);
-    assert(b2.matchOnce!(ThompsonMatcher)(re)[0] == "abc");
+    auto m = b2.matchOnce!(ThompsonMatcher)(re);
+    assert(m[0] == "abc", text(m[0]));
 }
 /++
     Compile regular expression pattern for the later execution.
