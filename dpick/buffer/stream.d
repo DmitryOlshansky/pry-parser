@@ -22,21 +22,25 @@ struct Win32FileInput {
         if(unc && zStr)
             result = path;
         else {
-            wchar[] buf = new wchar[path.length + (unc ? 0 : 1) + (zStr ? 0 : 1)];
-            auto tail = unc ? repr(buf) : copy(repr(`\\?\`w), repr(buf));
-            tail = copy(repr(path), tail);
+            //TODO: any decent temporary allocator
+            wchar[] buf = new wchar[path.length + (unc ? 0 : 4) + (zStr ? 0 : 1)];
+            ushort[] tail;
+            if(!unc) {
+                copy(repr(`\\?\`w), repr(buf));
+                tail = repr(buf)[4..$];
+            }
+            else
+                tail = repr(buf);
+            copy(repr(path), tail);
             if(!zStr)
-                tail[0] = 0;
+                tail[$-1] = 0;
             result = buf;
         }
-        debug {
-            import std.stdio;
-            writeln("New path: %s", buf);
-        }
-        file = enforce(CreateFileW(
+        file = CreateFileW(
             result.ptr, GENERIC_READ, cast(uint)FILE_SHARE_READ, null,
             cast(uint)OPEN_EXISTING, cast(uint)FILE_ATTRIBUTE_NORMAL, null
-        ));
+        );
+        enforce(file != INVALID_HANDLE_VALUE);
     }
 
     size_t read(ubyte[] dest){
