@@ -2776,11 +2776,13 @@ import dpick.buffer;
 
     bool next()
     {
-        if(buf.empty)
+        if(buf.empty) {
+            index = buf.mark(); //mark at end
             return false;
+        }
         index = buf.mark();
-        import std.stdio;
         front = decodeUtf8(*buf);
+        import std.stdio;
         writeln(front);
         return true;
     }
@@ -2947,6 +2949,8 @@ import dpick.buffer;
             //+ empty match advances the input
             if(!exhausted && matches[0].begin == matches[0].end)
                 next();
+            import std.stdio;
+            writeln((*buf)[matches[0].begin .. matches[0].end]);
         }
         return matched;
     }
@@ -3441,10 +3445,6 @@ import dpick.buffer;
             startPc = startPc;
         if(!atEnd)//if no char
         {
-            debug(std_regex_matcher)
-            {
-                writefln("-- Threaded matching threads at  %s",  s[index..s.lastIndex]);
-            }
             if(startPc!=RestartPc)
             {
                 auto startT = createStart(index, startPc);
@@ -3719,7 +3719,7 @@ public:
         assert(c.front == "42");
         ----
     +/
-    R opIndex(String)(String i) /*const*/ //@@@BUG@@@
+    auto opIndex(String)(String i) /*const*/ //@@@BUG@@@
         if(isSomeString!String)
     {
         size_t index = lookupNamedGroup(_names, i);
@@ -3867,7 +3867,7 @@ private @trusted auto matchOnce(alias Engine, RegEx, Buffer)
     return captures;
 }
 
-private auto matchMany(alias Engine, RegEx, R)(R input, RegEx re)
+private auto matchMany(alias Engine, RegEx, R)(ref R input, RegEx re)
 {
     re.flags |= RegexOption.global;
     return RegexMatch!(R, Engine)(input, re);
@@ -3932,14 +3932,14 @@ public auto matchFirst(R, String)(ref R input, String re)
 }
 
 
-public auto matchAll(R, RegEx)(R input, RegEx re)
+public auto matchAll(R, RegEx)(ref R input, RegEx re)
     if(isBuffer!R && is(RegEx == Regex!(char)))
 {
     return matchMany!ThompsonMatcher(input, re);
 }
 
 ///ditto
-public auto matchAll(R, String)(R input, String re)
+public auto matchAll(R, String)(ref R input, String re)
     if(isBuffer!R && isSomeString!String)
 {
     return matchMany!ThompsonMatcher(input, regex(re));
@@ -3948,13 +3948,16 @@ public auto matchAll(R, String)(R input, String re)
 // another set of tests just to cover the new API
 @system unittest
 {
+    import std.stdio;
     foreach(String; TypeTuple!(string))
-    {        
-        auto str1 = buffer("blah-bleh".to!String());
+    {
+        auto str1 = "blah-bleh".to!String().buffer;
         auto pat1 = "bl[ae]h".to!String();
         auto mf = matchFirst(str1, pat1);
         assert(mf.equal(["blah".to!String()]));
-        auto mAll = matchAll(str1, pat1);
+        str1 = "blah-bleh".to!String().buffer;
+        auto mAll = matchAll(str1, pat1);        
+        
         assert(mAll.equal!((a,b) => a.equal(b))
             ([["blah".to!String()], ["bleh".to!String()]]));
 
@@ -3962,6 +3965,7 @@ public auto matchAll(R, String)(R input, String re)
         auto pat2 = regex(r"(\d+)/(\d+)/(\d+)".to!String());
         auto mf2 = matchFirst(str2, pat2);
         assert(mf2.equal(["1/03/12", "1", "03", "12"].map!(to!String)()));
+        str2 = "1/03/12 - 3/03/12".to!String().buffer;
         auto mAll2 = matchAll(str2, pat2);
         assert(mAll2.front.equal(mf2));
         mAll2.popFront();
@@ -3974,8 +3978,8 @@ public auto matchAll(R, String)(R input, String re)
 //produce replacement string from format using captures for substitution
 private void replaceFmt(R, Capt, OutR)
     (R format, Capt captures, OutR sink, bool ignoreBadSubs = false)
-    if(isOutputRange!(OutR, ElementEncodingType!R[]) &&
-        isOutputRange!(OutR, ElementEncodingType!(Capt.String)[]))
+    if(isOutputRange!(OutR, ElementEncodingType!R) &&
+        isOutputRange!(OutR, ElementEncodingType!(typeof(captures[0]))))
 {
     enum State { Normal, Dollar }
     auto state = State.Normal;
@@ -4020,7 +4024,8 @@ L_Replace_Loop:
                 sink.put(captures[0]);
                 format = format[1 .. $];
             }
-            else if(format[0] == '`')
+            //Not available for buffered regex
+            /*else if(format[0] == '`')
             {
                 sink.put(captures.pre);
                 format = format[1 .. $];
@@ -4029,7 +4034,7 @@ L_Replace_Loop:
             {
                 sink.put(captures.post);
                 format = format[1 .. $];
-            }
+            }*/
             else if(format[0] == '$')
             {
                 sink.put(format[0 .. 1]);
@@ -4050,7 +4055,7 @@ public class RegexException : Exception
         super(msg, file, line);
     }
 }
-/+
+
 //--------------------- TEST SUITE ---------------------------------
 version(unittest)
 {
@@ -4368,7 +4373,7 @@ unittest
     void run_tests(alias matchFn)()
     {
         int i;
-        foreach(Char; TypeTuple!( char, wchar, dchar))
+        foreach(Char; TypeTuple!(char))
         {
             alias immutable(Char)[] String;
             String produceExpected(M,Range)(auto ref M m, Range fmt)
@@ -4397,7 +4402,8 @@ unittest
 
                 if(c != 'c')
                 {
-                    auto m = matchFn(to!(String)(tvd.input), r);
+                    auto buf = buffer(tvd.input.to!String);
+                    auto m = matchFn(buf, r);
                     i = !m.empty;
                     assert((c == 'y') ? i : !i, text(matchFn.stringof ~": failed to match pattern #", a ,": ", tvd.pattern));
                     if(c == 'y')
@@ -4417,4 +4423,3 @@ unittest
 }
 
 }//version(unittest)
-+/
