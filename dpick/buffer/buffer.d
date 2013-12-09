@@ -113,7 +113,10 @@ struct GenericBuffer(Input)
     if(isInputStream!Input)
 {
     static struct Mark {
-        @disable this(this);
+        this(this){
+            if(buf)
+                buf.pin(this); //bump ref-count
+        }
         ~this() {
             if(buf)
                 buf.discard(pos);
@@ -220,7 +223,7 @@ struct GenericBuffer(Input)
 
     @property Mark mark() {
         auto m = Mark(mileage + cur, &this);
-        pinning.add(page(m.pos));
+        pin(m);
         return m;
     }
 
@@ -239,6 +242,9 @@ struct GenericBuffer(Input)
         cur = cast(size_t)(m.pos - mileage);
     }
 
+    void pin(ref Mark m){
+        pinning.add(page(m.pos));
+    }
     //
     void discard(ulong ofs) {
         pinning.remove(page(ofs));        

@@ -2959,7 +2959,7 @@ import dpick.buffer;
     /+
         handle succesful threads
     +/
-    void finish(const(Thrd)* t, G[] matches)
+    void finish(Thrd* t, G[] matches)
     {
         matches.ptr[0..re.ngroup] = t.matches.ptr[0..re.ngroup];
         debug(std_regex_matcher)
@@ -3823,7 +3823,7 @@ public:
         assert(m.empty);
         ---
     +/
-    @property auto front()
+    @property auto ref front()
     {
         return _captures;
     }
