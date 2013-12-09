@@ -16,21 +16,14 @@ struct Win32FileInput {
     }
 
     this(in wchar[] path) {
-        const(wchar)[] result;
-        bool unc = path.startsWith(`\\?\`w);
+        const(wchar)[] result;        
         bool zStr = path.length && path[$-1] == 0;
-        if(unc && zStr)
+        if(zStr)
             result = path;
         else {
             //TODO: any decent temporary allocator
-            wchar[] buf = new wchar[path.length + (unc ? 0 : 4) + (zStr ? 0 : 1)];
-            ushort[] tail;
-            if(!unc) {
-                copy(repr(`\\?\`w), repr(buf));
-                tail = repr(buf)[4..$];
-            }
-            else
-                tail = repr(buf);
+            wchar[] buf = new wchar[path.length + (zStr ? 0 : 1)];
+            ushort[] tail = repr(buf);
             copy(repr(path), tail);
             if(!zStr)
                 tail[$-1] = 0;
