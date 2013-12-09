@@ -352,6 +352,7 @@ dchar decodeUtf8(Buffer)(ref Buffer buf)
     return c & 0x80 ? decodeUtf8Impl(buf) : (buf.popFront(), c);
 }
 
+//TODO: add correct overlong check
 dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
 {
     import std.typetuple;
@@ -369,10 +370,8 @@ dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
         case n:
             ret |= (c & leadMask!n) << 6*(n-1);
             foreach(v; Sequence!(1, n))
-            {                
+            {
                 uint x = buf[v] & 0x3F;
-                if(!x)
-                    badUtf8(); //overlong UTF-8
                 ret |= x << 6*(n-v-1);
             }
             buf.popFrontN(n);
@@ -380,8 +379,6 @@ dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
         }
         case 1: case 5: case 6: case 7:
         default:
-            import std.stdio;
-            writeln(msbs);
             badUtf8();
         }
     }
@@ -398,8 +395,6 @@ dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
                 if(buf.empty)
                     badUtf8();
                 uint x = buf.front & 0x3F;
-                if(!x)
-                    badUtf8();
                 ret |= x << 6*(n-v-1);
                 buf.popFront();
             }
@@ -407,6 +402,8 @@ dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
         }
         case 1: case 5: case 6: case 7:
         default:
+            import std.stdio;
+            writeln("Boom!");
             badUtf8();
         }
     }
@@ -416,7 +413,7 @@ dchar decodeUtf8Impl(Buffer)(ref Buffer buf)
 unittest
 {
     import std.typetuple;
-    foreach(msg; TypeTuple!("QЯऄ𫟖", "𫟖", "ऄ", "Г")){
+    foreach(msg; TypeTuple!("QЯऄ𫟖", "𫟖", "ऄ", "Г", "\u00c2\u2200\u00c3\u2203.")){
         auto buf = buffer(cast(immutable(ubyte)[])msg);
         auto m = msg;
         while(!m.empty){
