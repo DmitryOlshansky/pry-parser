@@ -2910,7 +2910,7 @@ import dpick.buffer;
                     eval!true(t, matches);
                 }
                 if(!matched)//if we already have match no need to push the engine
-                    eval!true(createStart(index), matches);//new thread staring at this position
+                    eval!true(createStart(), matches);//new thread staring at this position
                 else if(nlist.empty)
                 {
                     debug(std_regex_matcher) writeln("Stopped  matching before consuming full input");
@@ -2939,7 +2939,7 @@ import dpick.buffer;
             eval!false(t, matches);
         }
         if(!matched)
-            eval!false(createStart(index), matches);//new thread starting at end of input
+            eval!false(createStart(), matches);//new thread starting at end of input
         if(matched)
         {//in case NFA found match along the way
          //and last possible longer alternative ultimately failed
@@ -3453,7 +3453,7 @@ import dpick.buffer;
         {
             if(startPc!=RestartPc)
             {
-                auto startT = createStart(index, startPc);
+                auto startT = createStart(startPc);
                 genCounter++;
                 evalFn!true(startT, matches);
             }
@@ -3495,7 +3495,7 @@ import dpick.buffer;
             evalFn!false(t, matches);
         }
         if(!matched)
-            evalFn!false(createStart(index, startPc), matches);
+            evalFn!false(createStart(startPc), matches);
 
         return (matched?MatchResult.Match:MatchResult.NoMatch);
     }
@@ -3553,7 +3553,7 @@ import dpick.buffer;
     }
 
     //creates a start thread
-    Thrd* createStart(Mark index, uint pc = 0)
+    Thrd* createStart(uint pc = 0)
     {
         auto t = allocate();
         t.matches.ptr[0..re.ngroup] = G.init;
