@@ -126,10 +126,14 @@ struct GenericBuffer(Input)
     }
 
     this(Input inp, size_t chunk, size_t initial) {
-        assert((chunk & (chunk - 1)) == 0);
-        chunkSize = chunk;
+        import core.bitop : bsr;
+        assert((chunk & (chunk - 1)) == 0 && chunk != 0);
+        static assert(bsr(1) == 0);
+        chunkBits = bsr(chunk)+1;
+        chunkMask = (1<<chunkBits)-1;
         input = move(inp);
-        buffer = new ubyte[initial * chunkSize]; //TODO: revisit with std.allocator
+        //TODO: revisit with std.allocator
+        buffer = new ubyte[initial<<chunkBits];
         pinning = pinningRBT();
         fillBuffer(0);
     }
@@ -180,9 +184,9 @@ struct GenericBuffer(Input)
     body {
         //number of full blocks at front of buffer till first pinned by marks
         // or till 'cur' that is to be considered as pinned
-        auto start = pinning.empty ? cur & ~(chunkSize-1) : 
-                chunkSize*(pinning.lowerBound - cast(size_t)(mileage/chunkSize));
-        if (start >= extra + chunkSize-1) {
+        auto start = pinning.empty ? cur & ~chunkMask : 
+                (pinning.lowerBound - cast(size_t)(mileage>>chunkBits))<<chunkBits;
+        if (start >= extra + chunkMask) {
             copy(buffer[start..$], buffer[0 .. $ - start]);
             mileage += start;
             cur -= start;
@@ -194,7 +198,7 @@ struct GenericBuffer(Input)
             // make sure we'd get at least extra bytes to read
             auto oldLen = buffer.length;
             buffer.length = max(cur + extra, 
-                buffer.length * 14 / 10  & ~(chunkSize-1));
+                buffer.length * 14 / 10  & ~chunkMask);
             fillBuffer(oldLen);
             //no compaction - no mileage
         }
@@ -218,7 +222,7 @@ struct GenericBuffer(Input)
     }
 
     size_t page()(ulong absIdx) {
-        return cast(size_t)(absIdx / chunkSize);
+        return cast(size_t)(absIdx >> chunkBits);
     }
 
     @property Mark mark() {
@@ -253,7 +257,7 @@ struct GenericBuffer(Input)
     Input input;
     ubyte[] buffer; //big enough to contain all present marks
     size_t cur; //current position    
-    size_t chunkSize;
+    size_t chunkBits, chunkMask;
     ulong mileage; //bytes discarded before curent buffer.ptr
     bool last; // no more bytes to read
 }
