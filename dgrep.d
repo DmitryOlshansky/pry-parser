@@ -1,4 +1,4 @@
-import std.stdio, std.datetime;
+import std.stdio, std.datetime, std.file;
 import dpick.buffer;
 import regex;
 
@@ -9,7 +9,10 @@ void main(string[] args)
         writefln("Usage: %s <pattern> [file]", args[0]);
         return;
     }
-    auto buf = buffer(fileInput(args[2]), 128);
+    version(whole)
+        auto buf = buffer(cast(ubyte[])std.file.read(args[2]));
+    else
+        auto buf = buffer(fileInput(args[2]), 1024);
     int count;
     StopWatch sw;
     sw.start();
