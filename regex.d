@@ -2739,9 +2739,9 @@ import dpick.buffer;
 {
     alias Mark = Buffer.Mark;
     alias Re = Regex!Char;
-    alias Thrd = Thread!Mark;
-    alias ThrdList = ThreadList!Mark;
-    alias G = Group!Mark;
+    alias Thrd = Thread!size_t;
+    alias ThrdList = ThreadList!size_t;
+    alias G = Group!size_t;
     Thrd* freelist;
     ThrdList clist, nlist;
     size_t[] merge;
@@ -2753,7 +2753,8 @@ import dpick.buffer;
     size_t threadSize;
     bool matched;
     bool exhausted;
-    Mark index; //index before currently decoded char
+    size_t index; //index before currently decoded char
+    Mark origin;
     enum kicked = false;
 
     static size_t getThreadSize(const ref Re re)
@@ -2769,7 +2770,7 @@ import dpick.buffer;
     }
 
     //true if it's start of input
-    @property bool atStart(){ return index == Mark.init; }
+    @property bool atStart(){ return index == 0 && origin == Mark.init; }
 
     //true if it's end of input
     @property bool atEnd(){  return front == dchar.init; }
@@ -2777,13 +2778,19 @@ import dpick.buffer;
     bool next()
     {
         if(buf.empty) {
-            index = buf.mark(); //mark at end
+            index = buf.tell(origin);
             front = dchar.init;
             return false;
         }
-        index = buf.mark();
+        index = buf.tell(origin);
         front = decodeUtf8(*buf);
         return true;
+    }
+    
+    void rebase()
+    {
+        origin = buf.mark();
+        index = 0;
     }
 
     static if(kicked)
@@ -2822,6 +2829,7 @@ import dpick.buffer;
     this(S)(ref ThompsonMatcher!(Char,S) matcher, Bytecode[] piece, Buffer* buffer)
     {
         buf = buffer;
+        origin = matcher.origin;
         re = matcher.re;
         re.ir = piece;
         threadSize = matcher.threadSize;
@@ -2879,7 +2887,7 @@ import dpick.buffer;
             auto searchFn = re.kickstart.empty ? &this.next : &this.search;
         else
             auto searchFn = &this.next;
-        
+        rebase();
         if((!matched) && clist.empty)
         {
            searchFn();
@@ -2911,7 +2919,9 @@ import dpick.buffer;
                     eval!true(t, matches);
                 }
                 if(!matched)//if we already have match no need to push the engine
+                {
                     eval!true(createStart(), matches);//new thread staring at this position
+                }
                 else if(nlist.empty)
                 {
                     debug(std_regex_matcher) writeln("Stopped  matching before consuming full input");
@@ -2921,6 +2931,7 @@ import dpick.buffer;
                 nlist = (ThrdList).init;
                 if(clist.tip is null)
                 {
+                    rebase();
                     if(!searchFn())
                         break;
                     //pin here
@@ -2945,15 +2956,15 @@ import dpick.buffer;
         if(matched)
         {//in case NFA found match along the way
          //and last possible longer alternative ultimately failed
-            buf.restore(matches[0].end);//reset to last successful match
+            buf.restore(origin, matches[0].end);//reset to last successful match
             next();//and reload front character
             //--- here the exact state of stream was restored ---
             exhausted = atEnd || !(re.flags & RegexOption.global);
-            //+ empty match advances the input
+            //+ empty match advances the input            
             if(!exhausted && matches[0].begin == matches[0].end)
                 next();
             //import std.stdio;
-            //writeln((*buf)[matches[0].begin .. matches[0].end]);
+            //writeln((*buf)[matches[0].begin .. matches[0].end]);            
         }
         return matched;
     }
@@ -3270,7 +3281,7 @@ import dpick.buffer;
                 else static if(withInput)
                 {
                     //WTF with 
-                    auto r = (*buf)[source[n].begin .. source[n].end];
+                    auto r = buf.slice(origin)[source[n].begin .. source[n].end];
                     auto s = cast(const(char)[])r[t.uopCounter .. $];
                     if(s.empty) //zero-width
                     {
@@ -3324,7 +3335,7 @@ import dpick.buffer;
                     == MatchResult.Match) ^ positive;
                 freelist = matcher.freelist;
                 genCounter = matcher.genCounter;
-                buf.restore(index);
+                buf.restore(origin, index);
                 next();
                 if(nomatch)
                 {
@@ -3600,9 +3611,10 @@ import dpick.buffer;
     if(is(Char : dchar) && isBuffer!Buffer)
 {//@trusted because of union inside
     alias Mark = Buffer.Mark;
-    alias G = Group!Mark;
+    alias G = Group!size_t;
 private:
     Buffer* _input;
+    Mark    _origin;
     bool _empty;
     enum smallString = 3;
     union
@@ -3645,42 +3657,28 @@ private:
             big_matches = new G[_ngroup];
     }
 
-    @property auto nullRange(){
-        return typeof(_input.slice(matches[0].begin)).init;
-    }
 
 public:
-    ///Slice of input prior to the match.
-    /*@property auto pre()
-    {
-        return _empty ? nullRange: (*_input)[0 .. matches[0].begin];
-    }*/
-
-    ///Slice of input immediately after the match.
-    /*@property auto post()
-    {
-        return _empty ? nullRange : (*_input)[matches[0].end .. $];
-    }*/
 
     ///Slice of matched portion of input.
     @property auto hit()
     {
         assert(!_empty);
-        return (*_input)[matches[0].begin .. matches[0].end];
+        return _input.slice(_origin)[matches[0].begin .. matches[0].end];
     }
 
     ///Range interface.
     @property auto front()
     {
         assert(!empty);
-        return (*_input)[matches[_f].begin .. matches[_f].end];
+        return _input.slice(_origin)[matches[_f].begin .. matches[_f].end];
     }
 
     ///ditto
     @property auto back()
     {
         assert(!empty);
-        return (*_input)[matches[_b - 1].begin .. matches[_b - 1].end];
+        return _input.slice(_origin)[matches[_b - 1].begin .. matches[_b - 1].end];
     }
 
     ///ditto
@@ -3706,7 +3704,9 @@ public:
         assert(_f + i < _b,text("requested submatch number ", i," is out of range"));
         //assert(matches[_f + i].begin <= matches[_f + i].end, 
         //    text("wrong match: ", matches[_f + i].begin, "..", matches[_f + i].end));
-        return (*_input)[matches[_f + i].begin .. matches[_f + i].end];
+        import std.stdio;
+        writeln(_input.slice(_origin), " ", matches[_f + i].begin, "..", matches[_f + i].end);
+        return _input.slice(_origin)[matches[_f + i].begin .. matches[_f + i].end];
     }
 
     /++
@@ -3730,7 +3730,7 @@ public:
         if(isSomeString!String)
     {
         size_t index = lookupNamedGroup(_names, i);
-        return (*_input)[matches[index].begin .. matches[index].end];
+        return _input.slice(_origin)[matches[index].begin .. matches[index].end];
     }
 
     ///Number of matches in this object.
@@ -3769,6 +3769,7 @@ private:
         _engine = EngineType(prog, _input, _memory[size_t.sizeof..$]);
         _captures = Captures!(char, R)(this);
         _captures._empty = !_engine.match(_captures.matches);
+        _captures._origin = _engine.origin;
         debug(std_regex_allocation) writefln("RefCount (ctor): %x %d", _memory.ptr, counter);
     }
 
@@ -3844,6 +3845,7 @@ public:
         //previous _captures can have escaped references from Capture object
         _captures.newMatches();
         _captures._empty = !_engine.match(_captures.matches);
+        _captures._origin = _engine.origin;
     }
 
     ///ditto
@@ -3871,6 +3873,7 @@ private @trusted auto matchOnce(alias Engine, RegEx, Buffer)
     auto captures = Captures!(Char, Buffer)(&input, re.ngroup, re.dict);
     auto engine = EngineType(re, &input, memory);        
     captures._empty = !engine.match(captures.matches);
+    captures._origin = engine.origin;
     return captures;
 }
 

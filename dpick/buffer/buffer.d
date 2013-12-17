@@ -14,8 +14,11 @@ struct ArrayBuffer(T) {
     body { cur++; }
     T opIndex(size_t idx){ return data[cur + idx]; }
     @property bool lookahead(size_t n){ return data.length  >= cur + n; }
-    void restore(Mark m){ cur = m.ofs; }
+    void restore(Mark m, size_t idx=0){ cur = m.ofs + idx; }
     Mark mark(){ return Mark(cur); }
+    size_t tell(Mark m){
+        return cur - m.ofs;
+    }
     T[] slice(Mark m){
         return m.ofs <= cur ? data[m.ofs .. cur] : data[cur .. m.ofs];
     }
@@ -230,6 +233,10 @@ struct GenericBuffer(Input)
         pin(m);
         return m;
     }
+    
+    size_t tell(ref Mark m){
+        return cur - (m.pos - mileage);
+    }
 
     ubyte[] slice(ref Mark m) {
         auto ofs = offset(m);
@@ -242,8 +249,8 @@ struct GenericBuffer(Input)
         return ofs1 <= ofs2 ? buffer[ofs1 .. ofs2] : buffer[ofs1 .. ofs2];
     }
 
-    void restore(ref Mark m) {
-        cur = cast(size_t)(m.pos - mileage);
+    void restore(ref Mark m, size_t idx=0) {
+        cur = cast(size_t)(m.pos + idx - mileage);
     }
 
     void pin(ref Mark m){
