@@ -75,7 +75,8 @@ struct PosixFileInput {
     @disable this(this);
     
     this(string path) {
-        file = open(path.ptr, O_RDONLY);
+        import std.string : toStringz;
+        file = open(toStringz(path), O_RDONLY);
         enforce(file >= 0);
     }
 

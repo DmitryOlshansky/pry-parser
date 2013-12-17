@@ -2883,6 +2883,7 @@ import dpick.buffer;
         if((!matched) && clist.empty)
         {
            searchFn();
+           //pin here
         }
         else//char in question is  fetched in prev call to match
         {
@@ -2922,6 +2923,7 @@ import dpick.buffer;
                 {
                     if(!searchFn())
                         break;
+                    //pin here
                 }
                 else if(!next())
                 {
@@ -3445,10 +3447,9 @@ import dpick.buffer;
         {
             writefln("---------------single shot match ----------------- ");
         }
-            alias eval evalFn;
+        alias eval evalFn;
         assert(clist == (ThrdList).init || startPc == RestartPc); // incorrect after a partial match
         assert(nlist == (ThrdList).init || startPc == RestartPc);
-            startPc = startPc;
         if(!atEnd)//if no char
         {
             if(startPc!=RestartPc)
