@@ -235,7 +235,7 @@ struct GenericBuffer(Input)
     }
     
     size_t tell(ref Mark m){
-        return cur - (m.pos - mileage);
+        return cur - cast(size_t)(m.pos - mileage);
     }
 
     ubyte[] slice(ref Mark m) {
