@@ -78,40 +78,6 @@ unittest
     assert(buf.slice(m2) == s);
 }
 
-//pinning implemented as r-b tree
-struct PinningRBT {
-    import std.container;
-    //TODO: better set structure (preferably tunned for small sets)
-    RedBlackTree!(size_t) marks;
-    //AA mark -> num of marks to the same chunk
-    uint[size_t] counts;
-    void add(size_t blk) {        
-        if(blk in counts) //hash is O(1)
-            counts[blk]++;
-        else {
-            marks.insert(blk);
-            counts[blk] = 1;
-        }
-    }
-    void remove(size_t blk) {
-        if(--counts[blk] == 0) {
-            marks.remove(marks.equalRange(blk));
-            counts.remove(blk);
-        }
-    }
-    @property empty(){ return marks.empty; }
-    @property size_t lowerBound(){ return marks.front; }
-}
-
-//lack of 0-arg ctors
-auto pinningRBT()
-{
-    import std.container;
-    PinningRBT ret;
-    ret.marks = new RedBlackTree!(size_t);
-    return ret;
-}
-
 struct GenericBuffer(Input) 
     if(isInputStream!Input)
 {
@@ -137,7 +103,7 @@ struct GenericBuffer(Input)
         input = move(inp);
         //TODO: revisit with std.allocator
         buffer = new ubyte[initial<<chunkBits];
-        pinning = pinningRBT();
+        counters = new uint[initial + 1]; //extra counter for beyond last page
         fillBuffer(0);
     }
 
@@ -187,10 +153,16 @@ struct GenericBuffer(Input)
     body {
         //number of full blocks at front of buffer till first pinned by marks
         // or till 'cur' that is to be considered as pinned
-        auto start = pinning.empty ? cur & ~chunkMask : 
-                (pinning.lowerBound - cast(size_t)(mileage>>chunkBits))<<chunkBits;
+        auto firstPage = counters.countUntil!(x => x != 0);
+        auto start = firstPage < 0 ? cur & ~chunkMask : firstPage<<chunkBits;
         if (start >= extra + chunkMask) {
-            copy(buffer[start..$], buffer[0 .. $ - start]);
+            copy(buffer[start .. $], buffer[0 .. $ - start]);
+            if (firstPage >= 0) {
+                copy(counters[firstPage .. $], counters[0 .. $ - firstPage]);
+                counters[$ - firstPage .. $] = 0;
+            }
+            else
+                counters[] = 0;
             mileage += start;
             cur -= start;
             //all after buffer.length - start is free space
@@ -199,9 +171,11 @@ struct GenericBuffer(Input)
         else {
             // compaction won't help
             // make sure we'd get at least extra bytes to read
+            // rounded up to 2^^chunkBits
             auto oldLen = buffer.length;
-            buffer.length = max(cur + extra, 
-                buffer.length * 14 / 10  & ~chunkMask);
+            buffer.length = (max(cur + extra, buffer.length * 14 / 10) 
+                + chunkMask) & ~chunkMask;
+            counters.length = (buffer.length >> chunkBits) + 1;
             fillBuffer(oldLen);
             //no compaction - no mileage
         }
@@ -254,15 +228,15 @@ struct GenericBuffer(Input)
     }
 
     void pin(ref Mark m){
-        pinning.add(page(m.pos));
+        counters[page(m.pos - mileage)]++;
     }
     //
     void discard(ulong ofs) {
-        pinning.remove(page(ofs));        
-    }
-    PinningRBT pinning;
+        counters[page(ofs - mileage)]--;
+    }    
     Input input;
     ubyte[] buffer; //big enough to contain all present marks
+    uint[] counters; //a counter per page (number of marks)
     size_t cur; //current position    
     size_t chunkBits, chunkMask;
     ulong mileage; //bytes discarded before curent buffer.ptr

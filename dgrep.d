@@ -12,7 +12,7 @@ void main(string[] args)
     version(whole)
         auto buf = buffer(cast(ubyte[])std.file.read(args[2]));
     else
-        auto buf = buffer(fileInput(args[2]), 1024);
+        auto buf = buffer(fileInput(args[2]), 64);
     int count;
     StopWatch sw;
     sw.start();
