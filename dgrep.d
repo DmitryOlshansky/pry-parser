@@ -9,13 +9,13 @@ void main(string[] args)
         writefln("Usage: %s <pattern> [file]", args[0]);
         return;
     }
+    StopWatch sw;
+    sw.start();
     version(whole)
         auto buf = buffer(cast(ubyte[])std.file.read(args[2]));
     else
         auto buf = buffer(fileInput(args[2]), 64);
     int count;
-    StopWatch sw;
-    sw.start();
     foreach(m; buf.matchAll(args[1]))
     {
         count++;

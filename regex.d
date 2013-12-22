@@ -2931,7 +2931,8 @@ import dpick.buffer;
                 nlist = (ThrdList).init;
                 if(clist.tip is null)
                 {
-                    rebase();
+                    if(buf.offset(origin) > 2_500) //don't rebase char by char
+                        rebase();
                     if(!searchFn())
                         break;
                     //pin here
