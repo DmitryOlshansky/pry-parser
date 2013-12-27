@@ -14,7 +14,7 @@ void main(string[] args)
     version(whole)
         auto buf = buffer(cast(ubyte[])std.file.read(args[2]));
     else
-        auto buf = buffer(fileInput(args[2]), 64);
+        auto buf = buffer(fileInput(args[2]), 8192);
     int count;
     foreach(m; buf.matchAll(args[1]))
     {

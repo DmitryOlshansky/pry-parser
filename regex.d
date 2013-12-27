@@ -2931,7 +2931,7 @@ import dpick.buffer;
                 nlist = (ThrdList).init;
                 if(clist.tip is null)
                 {
-                    if(buf.offset(origin) > 2_500) //don't rebase char by char
+                    if(buf.tell(origin) > 2_500) //don't rebase char by char
                         rebase();
                     if(!searchFn())
                         break;
@@ -2957,7 +2957,7 @@ import dpick.buffer;
         if(matched)
         {//in case NFA found match along the way
          //and last possible longer alternative ultimately failed
-            buf.restore(origin, matches[0].end);//reset to last successful match
+            buf.seek(origin, matches[0].end);//reset to last successful match
             next();//and reload front character
             //--- here the exact state of stream was restored ---
             exhausted = atEnd || !(re.flags & RegexOption.global);
@@ -3336,7 +3336,7 @@ import dpick.buffer;
                     == MatchResult.Match) ^ positive;
                 freelist = matcher.freelist;
                 genCounter = matcher.genCounter;
-                buf.restore(origin, index);
+                buf.seek(origin, index);
                 next();
                 if(nomatch)
                 {
