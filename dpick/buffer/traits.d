@@ -5,21 +5,27 @@ enum isBuffer(T) = __traits(compiles, (ref T buf){
     import std.range;
     if(!buf.empty) {
         auto v = buf.front;
-        static assert(is(typeof(v) : ubyte));        
-        assert(buf[0] == v);
-        assert(buf.lookahead(2));
+        static assert(is(typeof(v) : ubyte));                
+        assert(buf.lookahead(2).length);
+        assert(buf.lookbehind(2).length);
+        static assert(isRandomAccessRange!(typeof(buf.lookahead(2))));
+        static assert(isRandomAccessRange!(typeof(buf.lookbehind(2))));
         auto m = buf.mark();
         buf.popFront();
         auto m2 = buf.mark();
         auto s = buf.slice(m);
-        auto s2 = buf[m .. m2];
+        auto s2 = buf.slice(m, m2);
         alias S = typeof(s);
         alias S2 = typeof(s2);
         static assert(isRandomAccessRange!S);
         static assert(isRandomAccessRange!S2);
         static assert(is(ElementType!S : ubyte));
         static assert(is(ElementType!S2 : ubyte));
-        buf.restore(m);
+        buf.seek(m);
+        buf.seek(m, -5);
+        buf.seek(m, 5);
+        buf.seek(5);
+        buf.seek(-5);
     }
 });
 
@@ -35,18 +41,37 @@ struct NullBuffer {
     ///ditto
     @property bool empty(){ return true; }
     ///ditto
-    void popFront(){ assert(0); }
-    /// lookahead from current position (must call lookahead first)
-    ubyte opIndex(size_t idx){ assert(0); }
-    /// ensure that buffer has at least bytes left in it (so can use opIndex)
-    @property bool lookahead(size_t n){ return false; }
-    /// instructs the underlying abstraction
-    /// to keep a hidden 'absolute offset' to slice off later
+    void popFront(){ assert(0); }   
+    /**
+        Take a slice starting from the current position to $(D n) bytes ahead.
+        On success the size of sliсe is strictly equal $(D n)
+        otherwise an empty slice is returned.
+    */
+    @property ubyte[] lookahead(size_t n){ return null; }
+    /**
+        Take a slice starting from $(D n) bytes behind to the current position.
+        On success the size of slcie is strictly equal $(D n)
+        otherwise an empty slice is returned.  
+    */
+    @property ubyte[] lookbehind(size_t n){ return null; }
+    /// Instruct the underlying buffer abstraction
+    /// to keep a vantage point to slice data later
     Mark mark(){ return Mark.init; }
-    /// Reset buffer state to previously marked position
-    void restore(ref Mark ){ }
-    /// Peek at slice from $(D m) to the current position
+    ///Get offset of the current position in the buffer relative to $(D origin).
+    ptrdiff_t tell(ref Mark origin){ return 0; }
+    /// Reset buffer state to an offset from the current position.
+    void seek(ptrdiff_t){ }
+    /// Reset buffer state to a previously marked position.
+    void seek(ref Mark ){ }
+    /**
+         Reset buffer state to a position offseted by $(D diff) from 
+         a previously marked position.
+    */
+    void seek(ref Mark, ptrdiff_t diff){ }
+    /// Peek at the slice of buffer from $(D m) to the current position.
     Range slice(ref Mark m){ return Range.init; }
+    /// Peek at the slice of buffer from $(D m1) to $(D m2).
+    Range slice(ref Mark m1, ref Mark m2){ return Range.init; }
 }
 
 ///Test if can slice $(D Buffer)'s data directly, without taking a copy
