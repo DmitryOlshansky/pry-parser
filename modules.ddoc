@@ -1,0 +1,4 @@
+MODULES = 
+	$(MODULE dpick.buffer.buffer)
+	$(MODULE dpick.buffer.stream)
+	$(MODULE dpick.buffer.traits)
