@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+	<meta charset="utf-8">
+	<title>dpick.buffer.stream - DataPickeD documentation</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- styles -->
+	<link href="bootDoc/assets/css/bootstrap.css" rel="stylesheet">
+	<style type="text/css">
+		body {
+		padding-top: 60px;
+		padding-bottom: 40px;
+		}
+		.sidebar-nav {
+		padding: 9px 0;
+		}
+	</style>
+	<link href="bootDoc/assets/css/bootstrap-responsive.css" rel="stylesheet">
+	<link href="bootDoc/bootdoc.css" rel="stylesheet">
+
+	<!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+	<!--[if lt IE 9]>
+		<script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+	<![endif]-->
+
+	<!-- fav and touch icons -->
+	<link rel="shortcut icon" href="bootDoc/assets/ico/favicon.ico">
+	<link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootDoc/assets/ico/apple-touch-icon-114-precomposed.png">
+	<link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootDoc/assets/ico/apple-touch-icon-72-precomposed.png">
+	<link rel="apple-touch-icon-precomposed" href="bootDoc/assets/ico/apple-touch-icon-57-precomposed.png">
+	
+	<!-- Introduce DDoc settings required by JavaScript -->
+	<script type="text/javascript">
+		var Title = 'dpick.buffer.stream';
+		var SourceRepository = 'http://github.com/blackwhale/datapicked/tree/master';
+		var PackageSeparator = '.';
+	</script>
+	
+	<style type="text/css">
+		.ddoc-icon-variable { background-image: url('bootDoc/ddoc-icons/var.png'); }
+		.ddoc-icon-function { background-image: url('bootDoc/ddoc-icons/func.png'); }
+		.ddoc-icon-property { background-image: url('bootDoc/ddoc-icons/property.png'); }
+		.ddoc-icon-struct { background-image: url('bootDoc/ddoc-icons/struct.png'); }
+		.ddoc-icon-class { background-image: url('bootDoc/ddoc-icons/class.png'); }
+		.ddoc-icon-enum { background-image: url('bootDoc/ddoc-icons/enum.png'); }
+		.ddoc-icon-template { background-image: url('bootDoc/ddoc-icons/template.png'); }
+	</style>
+	</head>
+
+	<body>
+	<!--
+	JavaScript reaps the module list from this element.
+	This is required for the MODULES macro to be reusable
+	in a noscript element later.
+	-->
+	<ul id="module-list-source" class="hidden">
+		
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.buffer.html" title="dpick.buffer.buffer"><i class="icon-th"></i>dpick.buffer.buffer</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.stream.html" title="dpick.buffer.stream"><i class="icon-th"></i>dpick.buffer.stream</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.traits.html" title="dpick.buffer.traits"><i class="icon-th"></i>dpick.buffer.traits</a></li>
+	</ul>
+	
+	<div class="navbar navbar-fixed-top">
+		<div class="navbar-inner">
+			<div class="container-fluid">
+				<a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</a>
+				<a class="brand" href="dpick.buffer.buffer.html">DataPickeD</a>
+				<div class="nav-collapse">
+					<ul class="nav">
+						<li class="active"><a href="dpick.buffer.buffer.html">Reference</a></li>
+					</ul>
+					
+					<form id="gotosymbol" class="navbar-search pull-left hidden">
+						<input type="text" class="search-query" placeholder="Go to symbol in dpick.buffer.stream" data-provide="typeahead" data-items="4">
+					</form>
+					
+					<p class="navbar-text pull-right"><a href="https://github.com/blackwhale/datapicked">Github Page</a></p>
+				</div><!--/.nav-collapse -->
+			</div>
+		</div>
+	</div>
+
+	<div class="container-fluid">
+		<div class="row-fluid">
+			<div class="span2">
+				<div class="well sidebar-nav">
+				<ul class="nav nav-list">
+					<li id="module-list" class="nav-header sidebar-list-entry">Modules<li>
+					<noscript>
+						
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.buffer.html" title="dpick.buffer.buffer"><i class="icon-th"></i>dpick.buffer.buffer</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.stream.html" title="dpick.buffer.stream"><i class="icon-th"></i>dpick.buffer.stream</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="dpick.buffer.traits.html" title="dpick.buffer.traits"><i class="icon-th"></i>dpick.buffer.traits</a></li>
+					</noscript>
+					<li id="symbol-list" class="nav-header sidebar-list-entry hidden">dpick.buffer.stream</li>
+				</ul>
+				</div><!--/.well -->
+			</div><!--/span-->
+			
+			<div class="span10">
+				<div class="row-fluid">
+					<div class="span11">
+						<ul id="module-breadcrumb" class="breadcrumb">
+							<noscript><h1>dpick.buffer.stream</h1></noscript>
+						</ul>
+						
+					</div>
+					<div class="span1 offset11">
+						<a href="dpick.buffer.buffer.html"><img src="bootDoc/assets/img/icon-github.png" alt="DataPickeD"/></a>
+					</div>
+				</div>
+				<div id="declaration-list">
+					<!-- Generated by Ddoc from ..\datapicked\dpick\buffer\stream.d -->
+<br><br>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="fileInput">&nbsp;</span><a class="symbol-link" href="#fileInput">fileInput</a>(C)(in C[] <i>path</i>) if (is(C : dchar));
+</h3></div>
+<div class="declaration-content"><dl><p>Create an input stream from file, that directly uses system I/O calls.</p>
+</dl>
+</div>
+
+
+				</div>
+				
+				<hr>
+				
+				<footer class="pull-left">
+					<p>Page generated with <a href="https://github.com/JakobOvrum/bootDoc">bootDoc</a>.</p>
+				</footer>
+				
+				<footer class="pull-right">
+					<p>&copy; Dmitry Olshansky 2013-2013</p>
+				</footer>
+			</div>
+		</div>
+	</div><!--/.fluid-container-->
+
+	<!-- Bootstrap javascript
+	================================================== -->
+	<!-- Placed at the end of the document so the pages load faster -->
+	<script src="bootDoc/assets/js/jquery.min.js"></script>
+	<script src="bootDoc/assets/js/bootstrap.min.js"></script>
+	
+	<!-- bootDoc javascript
+	================================================== -->
+	<script src="bootDoc/bootdoc.js"></script>
+	
+	</body>
+</html>

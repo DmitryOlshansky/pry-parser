@@ -1,5 +1,5 @@
 PROJECTNAME = DataPickeD
-REFERENCETOP = .example.html
+REFERENCETOP = dpick.buffer.buffer.html
 REPOSRCTREE = http://github.com/blackwhale/datapicked/tree/master
 TITLEBARTEXT = <a href="https://github.com/blackwhale/datapicked">Github Page</a>
 RESOURCEROOT = bootDoc/
