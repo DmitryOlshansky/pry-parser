@@ -3329,7 +3329,7 @@ import dpick.buffer;
                           return;
                       break;
             case IR.CodepointSet:
-                      if(re.charsets[re.ir[t.pc].data][front])
+                      if(re.charsets[re.ir[t.pc].data].scanFor(front))
                       {
                           t.pc += IRL!(IR.CodepointSet);
                           nlist.insertBack(t);
