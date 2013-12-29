@@ -115,7 +115,11 @@ else version(Posix)
 else
     static assert("Unsupported platform");
 
-///Create an input stream from file, that directly uses system I/O calls.
+/**
+    Create an input stream from file, that directly uses system I/O calls.
+    
+    See also dpick.buffer.traits.isInputStream.
+*/
 auto fileInput(C)(in C[] path)
     if(is(C : dchar))
 {

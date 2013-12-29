@@ -124,6 +124,19 @@ enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (ref Buffer buf
 
 /**
     Tests if $(D Stream) follows the InputStream concept.
+    In particular the following code must compiler for any Stream $(D s):
+    ---
+    (ref Stream s){
+        ubyte[] buf;
+        size_t len = s.read(buf);
+        assert(s.eof);
+        s.close();
+    }
+    ---
+    And the following must not (meaning that Stream is not copyable):
+    ---
+    Stream ns = s;
+    ---
     See also $(LREF NullInputStream).
 */
 enum isInputStream(T) = __traits(compiles, (ref T s){
@@ -149,6 +162,6 @@ struct NullInputStream
         Once eof returns true, all subsequent reads succeed but return 0.
     */
     @property bool eof(){ return true; }
-    /// Close underlying stream and free related resources.
+    /// Close the underlying stream and free related resources.
     void close(){}
 }
