@@ -3,7 +3,10 @@ module dpick.buffer.buffer;
 import std.algorithm, std.range, std.traits;
 import dpick.buffer.traits;
 
-///
+/**
+    Buffer for wrapping arrays, all operations work directly on the array 
+    offering no extra overhead.
+*/
 struct ArrayBuffer(T) {
     static struct Mark { size_t ofs; }
     @property ubyte front()
@@ -106,8 +109,8 @@ unittest
 }
 
 /**
-    Generic buffer range type - works with any type compatible 
-    with InputStream concept. See also dpick.buffer.stream.
+    A buffer range that works with any type compatible 
+    with InputStream concept. Buffers data of stream internally.
 */
 struct GenericBuffer(Input) 
     if(isInputStream!Input)
@@ -291,7 +294,7 @@ struct GenericBuffer(Input)
 static assert(isBuffer!(GenericBuffer!NullInputStream));
 
 /**
-    Create buffer range taking ownership of $(D stream) source.
+    Creates a $(D GenericBuffer) taking ownership of $(D stream) source.
     Tweakable parameters include initial buffer size,
     a block size of the buffer, 
     and minimal history (in bytes) to keep for lookbehind during buffering.
