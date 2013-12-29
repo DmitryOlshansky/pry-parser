@@ -3,6 +3,7 @@ module dpick.buffer.buffer;
 import std.algorithm, std.range, std.traits;
 import dpick.buffer.traits;
 
+///
 struct ArrayBuffer(T) {
     static struct Mark { size_t ofs; }
     @property ubyte front()
@@ -40,20 +41,24 @@ private:
     size_t cur;
 }
 
-///
+/**
+     Wrap an array as buffer.
+     If the original array had immutable elements then the resulting 
+     buffer supports zero-copy slicing.
+*/
 auto buffer()(ubyte[] data)
 {
     return ArrayBuffer!ubyte(data);
 }
 
-///
+/// ditto
 auto buffer(T)(T[] data)
     if(is(Unqual!T == ubyte))
 {
     return ArrayBuffer!T(data);
 }
 
-///
+/// ditto
 auto buffer(T)(T[] data)
     if(is(Unqual!T == char))
 {
@@ -100,6 +105,10 @@ unittest
     assert(buf.tell(m) == 0);
 }
 
+/**
+    Generic buffer range type - works with any type compatible 
+    with InputStream concept. See also dpick.buffer.stream.
+*/
 struct GenericBuffer(Input) 
     if(isInputStream!Input)
 {
@@ -116,13 +125,14 @@ struct GenericBuffer(Input)
         GenericBuffer* buf;
     }
 
-    this(Input inp, size_t chunk, size_t initial) {
+    this(Input inp, size_t minHistory, size_t chunk, size_t initial) {
         import core.bitop : bsr;
         assert((chunk & (chunk - 1)) == 0 && chunk != 0);
         static assert(bsr(1) == 0);
         chunkBits = bsr(chunk)+1;
         chunkMask = (1<<chunkBits)-1;
         input = move(inp);
+        history = (minHistory + chunkMask) & ~chunkMask; //round up to page
         //TODO: revisit with std.allocator
         buffer = new ubyte[initial<<chunkBits];
         counters = new uint[initial + 1]; //extra counter for beyond last page
@@ -171,7 +181,8 @@ struct GenericBuffer(Input)
         //number of full blocks at front of buffer till first pinned by marks
         // or till 'cur' that is to be considered as pinned
         auto firstPage = counters.countUntil!(x => x != 0);
-        auto start = firstPage < 0 ? cur & ~chunkMask : firstPage<<chunkBits;
+        auto effCur =  cur > history ? cur - history : 0;
+        auto start = firstPage < 0 ? effCur & ~chunkMask : firstPage<<chunkBits;
         if (start >= extra + chunkMask) {
             copy(buffer[start .. $], buffer[0 .. $ - start]);
             if (firstPage >= 0) {
@@ -270,7 +281,8 @@ struct GenericBuffer(Input)
     Input input;
     ubyte[] buffer; //big enough to contain all present marks
     uint[] counters; //a counter per page (number of marks)
-    size_t cur; //current position    
+    size_t cur; //current position
+    size_t history; //minimal amount of bytes to keep during compaction
     size_t chunkBits, chunkMask;
     ulong mileage; //bytes discarded before curent buffer.ptr
     bool last; // no more bytes to read
@@ -278,17 +290,23 @@ struct GenericBuffer(Input)
 
 static assert(isBuffer!(GenericBuffer!NullInputStream));
 
-//TODO: tweak defaults
-///
-auto buffer(Input)(Input stream, size_t bufferSize=8*1024, size_t page=512)
+/**
+    Create buffer range taking ownership of $(D stream) source.
+    Tweakable parameters include initial buffer size,
+    a block size of the buffer, 
+    and minimal history (in bytes) to keep for lookbehind during buffering.
+*/
+auto buffer(Input)(Input stream, size_t minHistory=32,
+    size_t bufferSize=8*1024, size_t page=512)
     if(isInputStream!Input)
 in {
     assert(bufferSize != 0 && ((bufferSize-1)&bufferSize) == 0);
     assert(page != 0 && ((page-1)&page) == 0);
     assert(page < bufferSize);
+    assert(minHistory < bufferSize);
 }
 body {
-    return GenericBuffer!Input(move(stream), page, bufferSize/page);
+    return GenericBuffer!Input(move(stream), minHistory, page, bufferSize/page);
 }
 
 unittest
@@ -312,18 +330,19 @@ unittest
     import std.conv;
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array 
-    auto buf = buffer(ChunkArray(arr), 4, 2);
+    auto buf = buffer(ChunkArray(arr), 2, 4, 2);
     assert(!buf.empty);
     assert(buf.lookbehind(10) == null);
     assert(buf.front == 10);
     assert(buf.lookahead(20));
     foreach(v; 10..40){
         auto luk = buf.lookahead(6);
-        assert(buf.front == v, text(buf.front, " vs ", v));        
+        assert(buf.front == v, text(buf.front, " vs ", v));
         assert(luk[2] == v+2);
         assert(luk[5] == v+5);
         buf.popFront();
     }
+    assert(buf.lookbehind(2).equal([38, 39]));
     {
         auto m = buf.mark();
         auto m2 = buf.mark();

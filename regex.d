@@ -4056,7 +4056,7 @@ unittest
         TestVectors(  "abc$",      "aabc", "y",    "$&",    "abc" ),
         TestVectors(  "^",         "abc",  "y",    "$&",    "" ),
         TestVectors(  "$",         "abc",  "y",    "$&",    "" ),
-*/        TestVectors(  "a.c",       "abc",  "y",    "$&",    "abc" ),
+*/      TestVectors(  "a.c",       "abc",  "y",    "$&",    "abc" ),
         TestVectors(  "a.c",       "axc",  "y",    "$&",    "axc" ),
         TestVectors(  "a.*c",      "axyzc","y",    "$&",    "axyzc" ),
         TestVectors(  "a.*c",      "axyzd","n",    "-",    "-" ),
