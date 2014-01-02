@@ -55,10 +55,6 @@ struct Win32FileInput {
 
     @property bool eof(){ return exhasted; }
 
-    ~this(){
-        close();
-    }
-
 private:
     static inout(ushort)[] repr(inout(wchar)[] arg) { 
         return cast(inout(ushort)[])arg;
@@ -76,6 +72,7 @@ struct PosixFileInput {
     
     this(string path) {
         import std.string : toStringz;
+        //TODO: temporary allocator
         file = open(toStringz(path), O_RDONLY);
         enforce(file >= 0);
     }
@@ -100,9 +97,6 @@ struct PosixFileInput {
 
     @property bool eof(){ return exhasted; }
 
-    ~this(){
-        close();
-    }
 private:
     int file = -1;
     bool exhasted;
