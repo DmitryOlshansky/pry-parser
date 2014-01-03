@@ -80,6 +80,7 @@ private:
     {
         assert(fd == 0);
         file = GetStdHandle(STD_INPUT_HANDLE);
+        win32Enforce(file != INVALID_HANDLE_VALUE);
     }
     HANDLE file = INVALID_HANDLE_VALUE;
     bool exhasted;
