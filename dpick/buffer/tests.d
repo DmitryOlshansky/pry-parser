@@ -36,7 +36,7 @@ unittest
         }
         assert(equal(buf.slice(m2), buf.slice(m)));
         assert(equal(buf.slice(m), iota(40, 100)));
-        buf = m;
+        buf = m.save;
         buf.seek(1);
         buf.seek(59); //60 in total
         auto m3 = buf.save;
@@ -44,10 +44,10 @@ unittest
             assert(buf.front == v);
             buf.popFront();
         }
-        buf = m3;
+        buf = m3.save;
         buf.seek(-60);
         assert(buf.lookahead(80).equal(iota(40, 120)));
-        buf = m3;
+        buf = m3.save;
         buf.seek(20);
         assert(equal(buf.slice(m2), buf.slice(m)));
         assert(equal(buf.slice(m), iota(40, 120)));
@@ -58,7 +58,7 @@ unittest
     }
     auto m = buf.save;
     assert(equal(buf, iota(100, 250)));
-    buf = m;
+    buf = m.save;
     assert(equal(buf, iota(100, 250)));
     assert(equal(buf.slice(m), iota(100, 250)));
 }

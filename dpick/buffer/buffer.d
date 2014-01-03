@@ -131,6 +131,14 @@ private static void apply(alias fn, Impl)(NodeT!Impl* start)
         }while(p != start);
 }
 
+//debug tool
+private void printRefs(Impl)(NodeT!Impl* node)
+{
+    import std.stdio;
+    apply!(p => writefln("%x pos=%d, cnt=%d, prev=%x, next=%x", 
+        p, p.pos, p.cnt, p.prev, p.next))(node);
+}
+
 
 struct GenericBufferRef(Impl)
 {
@@ -192,7 +200,7 @@ struct GenericBufferRef(Impl)
     }
 
     //created a new (shared) copy of this ref
-    this(this){
+    this(this){        
         if (ptr)
             ptr.cnt++;
     }
@@ -203,6 +211,7 @@ struct GenericBufferRef(Impl)
         ptr = that.ptr;
         if (ptr)
             ptr.cnt++;
+        return this;
     }
 
     //rvalue - just steal 'that' reference
@@ -210,6 +219,7 @@ struct GenericBufferRef(Impl)
         dispose();
         ptr = that.ptr;
         that.ptr = null;
+        return this;
     }
 
     ~this(){
@@ -244,8 +254,18 @@ private:
         q.buf = ptr.buf;
         q.pos = ptr.pos;
         //insert before 'this' reference
-        q.next = ptr;
-        q.prev = ptr.prev;
+        if (ptr == ptr.next) { //one element ring
+            q.next = q.prev = ptr;
+            ptr.next = ptr.prev = q;
+        }
+        else {
+            //   ptr.prev<--> ptr <--> ptr.next
+            //   ptr.prev<--> q <---> ptr <---> ptr.next
+            q.next = ptr;
+            q.prev = ptr.prev;
+            ptr.prev.next = q;
+            ptr.prev = q;
+        }
         ptr.prev = q;
         return q;
     }
@@ -258,9 +278,9 @@ private:
         if (ptr) {
             if (--ptr.cnt == 0){
                 // the only link in chain?
-                if (ptr.next == ptr.prev) {
+                if (ptr.next == ptr) {
                     //yes - destroy the buffer
-                    assert(ptr.next == ptr);
+                    assert(ptr.prev == ptr);
                     impl.dispose();
                 }
                 else {
@@ -289,9 +309,9 @@ private:
             return true;
         if (impl.last)
             return false;
-        //must have at lest 1 byte before end of window
+        //must have at least 1 byte before the end of window
         read(val - impl.window.length + 1);
-        // current position may have changed inside of read
+        // current position may have changed during the read
         // but it must end up inside of the buffer
         return ptr.pos + ofs < impl.window.length;
     }
@@ -301,9 +321,9 @@ private:
         size_t maxDiscard = impl.window.length;
         apply!(p => maxDiscard = min(p.pos, maxDiscard))(ptr);
         //call adjustPos hook if it was a buffer compaction
-        size_t adjust = impl.load(maxDiscard, n);
-        if (adjust){
-            apply!(p => p.pos -= adjust)(ptr);
+        size_t discarded = impl.load(maxDiscard, n);
+        if (discarded) {
+            apply!(p => p.pos -= discarded)(ptr);
         }
     }
 
@@ -322,6 +342,56 @@ private:
     Node* ptr;
     //TODO: use std.allocator
     static Node* freeList;
+}
+
+struct FakeBufferImpl
+{
+    @property ubyte[] window(){ return null; }
+
+    // !=0 on compaction, returns number of bytes were discarded
+    size_t load(size_t discard, size_t toLoad)
+    {
+        return 0;
+    }
+    
+    @property bool last(){ return true; }
+
+    void dispose(){ closed++; }
+private:
+    int closed;
+}
+
+//test ring of references scheme
+unittest
+{
+    alias Buf = GenericBufferRef!FakeBufferImpl;
+    auto impl = new FakeBufferImpl;
+    {   
+        //w/o but save
+        auto buf = Buf(impl);
+        //2 postblits
+        auto buf2 = buf;
+        auto buf3 = buf;
+        //l-value
+        buf2 = (buf3 = buf);
+        //NRVO r-value
+        buf2 = (){ auto x = buf; return x; }();
+    }
+    assert(impl.closed == 1);
+    {
+        //with save
+        auto buf = Buf(impl);
+        //postblit + save
+        auto buf2 = buf.save;
+        //r-value + save
+        buf2 = buf2.save;
+        //r-value + more save
+        auto buf3 = buf2.save.save.save;
+        //l-value + save
+        buf = (buf3 = buf.save);
+        //NRVO r-value + save
+        buf = (){ auto x = buf2.save; return x; }();
+    }
 }
 
 /*
