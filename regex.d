@@ -2656,7 +2656,6 @@ import dpick.buffer;
 @trusted struct ThompsonMatcher(Char, Buffer)
     if(is(Char : dchar) && isBuffer!Buffer)
 {
-    alias Mark = Buffer.Mark;
     alias Re = Regex!Char;
     alias Thrd = Thread!size_t;
     alias ThrdList = ThreadList!size_t;
@@ -2666,14 +2665,14 @@ import dpick.buffer;
     size_t[] merge;
     G[] backrefed;
     Re re;           //regex program
-    Buffer* buf;
+    Buffer buf;
     dchar front;
     size_t genCounter;    //merge trace counter, goes up on every dchar
     size_t threadSize;
     bool matched;
     bool exhausted;
     size_t index; //index before currently decoded char
-    Mark origin;
+    Buffer origin; //saved vantage point
     enum kicked = true;
 
     static size_t getThreadSize(const ref Re re)
@@ -2689,7 +2688,7 @@ import dpick.buffer;
     }
 
     //true if it's start of input
-    @property bool atStart(){ return index == 0 && origin == Mark.init; }
+    @property bool atStart(){ return index == 0 && origin == Buffer.init; }
 
     //true if it's end of input
     @property bool atEnd(){  return front == dchar.init; }
@@ -2702,13 +2701,13 @@ import dpick.buffer;
             return false;
         }
         index = buf.tell(origin);
-        front = decodeUtf8(*buf);
+        front = decodeUtf8(buf);
         return true;
     }
     
     void rebase()
     {
-        origin = buf.mark();
+        origin = buf.save;
         index = 0;
     }
 
@@ -2738,7 +2737,7 @@ import dpick.buffer;
         }
     }
 
-    this()(Regex!Char program, Buffer* buffer, void[] memory)
+    this()(Regex!Char program, Buffer buffer, void[] memory)
     {
         re = program;
         buf = buffer;
@@ -2746,7 +2745,7 @@ import dpick.buffer;
         genCounter = 0;
     }
 
-    this(S)(ref ThompsonMatcher!(Char,S) matcher, Bytecode[] piece, Buffer* buffer)
+    this(S)(ref ThompsonMatcher!(Char,S) matcher, Bytecode[] piece, Buffer buffer)
     {
         buf = buffer;
         origin = matcher.origin;
@@ -2877,7 +2876,9 @@ import dpick.buffer;
         if(matched)
         {//in case NFA found match along the way
          //and last possible longer alternative ultimately failed
-            buf.seek(origin, matches[0].end);//reset to last successful match
+            //reset to last successful match
+            auto overshot = -buf.tell(origin)+cast(ptrdiff_t)matches[0].end;
+            buf.seek(overshot);
             next();//and reload front character
             //--- here the exact state of stream was restored ---
             exhausted = atEnd || !(re.flags & RegexOption.global);
@@ -2885,7 +2886,7 @@ import dpick.buffer;
             if(!exhausted && matches[0].begin == matches[0].end)
                 next();
             //import std.stdio;
-            //writeln((*buf)[matches[0].begin .. matches[0].end]);            
+            //writeln((buf)[matches[0].begin .. matches[0].end]);            
         }
         return matched;
     }
@@ -3256,7 +3257,7 @@ import dpick.buffer;
                     == MatchResult.Match) ^ positive;
                 freelist = matcher.freelist;
                 genCounter = matcher.genCounter;
-                buf.seek(origin, index);
+                buf.seek(-buf.tell(origin) + index);
                 next();
                 if(nomatch)
                 {
@@ -3531,11 +3532,10 @@ import dpick.buffer;
 @trusted public struct Captures(Char, Buffer)
     if(is(Char : dchar) && isBuffer!Buffer)
 {//@trusted because of union inside
-    alias Mark = Buffer.Mark;
     alias G = Group!size_t;
 private:
-    Buffer* _input;
-    Mark    _origin;
+    Buffer _input;
+    Buffer _origin;
     bool _empty;
     enum smallString = 3;
     union
@@ -3547,9 +3547,8 @@ private:
     uint _ngroup;
     NamedGroup[] _names;
 
-    this()(Buffer* input, uint ngroups, NamedGroup[] named)
+    this()(uint ngroups, NamedGroup[] named)
     {
-        _input = input;
         _ngroup = ngroups;
         _names = named;
         newMatches();
@@ -3559,7 +3558,6 @@ private:
 
     this(alias Engine)(ref RegexMatch!(Buffer, Engine) rmatch)
     {
-        _input = rmatch._input;
         _ngroup = rmatch._engine.re.ngroup;
         _names = rmatch._engine.re.dict;
         newMatches();
@@ -3625,8 +3623,6 @@ public:
         assert(_f + i < _b,text("requested submatch number ", i," is out of range"));
         //assert(matches[_f + i].begin <= matches[_f + i].end, 
         //    text("wrong match: ", matches[_f + i].begin, "..", matches[_f + i].end));
-        import std.stdio;
-        writeln(_input.slice(_origin), " ", matches[_f + i].begin, "..", matches[_f + i].end);
         return _input.slice(_origin)[matches[_f + i].begin .. matches[_f + i].end];
     }
 
@@ -3676,21 +3672,20 @@ public:
 private:
     alias Engine!(char, R) EngineType;
     EngineType _engine;
-    R* _input;
     Captures!(char, R) _captures;
     void[] _memory;//is ref-counted
 
-    this(RegEx)(ref R input, RegEx prog)
+    this(RegEx)(R input, RegEx prog)
     {
-        _input = &input;
         immutable size = EngineType.initialMemory(prog)+size_t.sizeof;
         _memory = (enforce(malloc(size))[0..size]);
         scope(failure) free(_memory.ptr);
         *cast(size_t*)_memory.ptr = 1;
-        _engine = EngineType(prog, _input, _memory[size_t.sizeof..$]);
+        _engine = EngineType(prog, move(input), _memory[size_t.sizeof..$]);
         _captures = Captures!(char, R)(this);
         _captures._empty = !_engine.match(_captures.matches);
         _captures._origin = _engine.origin;
+        _captures._input  = _engine.buf;
         debug(std_regex_allocation) writefln("RefCount (ctor): %x %d", _memory.ptr, counter);
     }
 
@@ -3767,6 +3762,7 @@ public:
         _captures.newMatches();
         _captures._empty = !_engine.match(_captures.matches);
         _captures._origin = _engine.origin;
+        _captures._input = _engine.buf;
     }
 
     ///ditto
@@ -3784,21 +3780,22 @@ public:
 }
 
 private @trusted auto matchOnce(alias Engine, RegEx, Buffer)
-    (ref Buffer input, RegEx re) if(isBuffer!Buffer)
+    (Buffer input, RegEx re) if(isBuffer!Buffer)
 {
     alias Char = char;
     alias EngineType = Engine!(Char, Buffer);
     size_t size = EngineType.initialMemory(re);
     void[] memory = enforce(malloc(size))[0..size];
     scope(exit) free(memory.ptr);
-    auto captures = Captures!(Char, Buffer)(&input, re.ngroup, re.dict);
-    auto engine = EngineType(re, &input, memory);        
+    auto captures = Captures!(Char, Buffer)(re.ngroup, re.dict);
+    auto engine = EngineType(re, input, memory);        
     captures._empty = !engine.match(captures.matches);
     captures._origin = engine.origin;
+    captures._input = engine.buf;
     return captures;
 }
 
-private auto matchMany(alias Engine, RegEx, R)(ref R input, RegEx re)
+private auto matchMany(alias Engine, RegEx, R)(R input, RegEx re)
 {
     re.flags |= RegexOption.global;
     return RegexMatch!(R, Engine)(input, re);
