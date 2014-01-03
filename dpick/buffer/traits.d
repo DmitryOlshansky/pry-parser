@@ -5,6 +5,7 @@ module dpick.buffer.traits;
     must compile for any $(D buf) of compatible type $(D T):
     ---
     import std.range;
+    static assert(isForwardRange!T);
     if(!buf.empty) {
         auto v = buf.front;
         static assert(is(typeof(v) : ubyte));
@@ -12,22 +13,15 @@ module dpick.buffer.traits;
         assert(buf.lookbehind(2).length);
         static assert(isRandomAccessRange!(typeof(buf.lookahead(2))));
         static assert(isRandomAccessRange!(typeof(buf.lookbehind(2))));
-        auto m = buf.mark();
+        T m = buf.save;
         buf.popFront();
-        auto m2 = buf.mark();
         auto s = buf.slice(m);
-        auto s2 = buf.slice(m, m2);
         alias S = typeof(s);
-        alias S2 = typeof(s2);
         static assert(isRandomAccessRange!S);
-        static assert(isRandomAccessRange!S2);
-        static assert(is(ElementType!S : ubyte));
-        static assert(is(ElementType!S2 : ubyte));
-        buf.seek(m);
-        buf.seek(m, -5);
-        buf.seek(m, 5);
-        buf.seek(5);
-        buf.seek(-5);
+        //static assert(is(ElementType!S : ubyte));
+        buf = m;
+        assert(buf.seek(-5));
+        assert(buf.seek(5));
     }
     ---
 */
@@ -48,8 +42,8 @@ enum isBuffer(T) = __traits(compiles, (T buf){
         static assert(isRandomAccessRange!S);
         //static assert(is(ElementType!S : ubyte));
         buf = m;
-        buf.seek(-5);
-        buf.seek(5);
+        assert(buf.seek(-5));
+        assert(buf.seek(5));
     }
 });
 
@@ -86,7 +80,8 @@ struct NullBuffer {
     ///Get offset of the position in the buffer of this range relative to $(D origin).
     ptrdiff_t tell(NullBuffer origin){ return 0; }
     /// Reset buffer state to an offset from the current position.
-    void seek(ptrdiff_t){ }
+    /// Return indicates success of the operation.
+    bool seek(ptrdiff_t){ return false; }
     /// Peek at the slice of buffer between of $(D m)
     /// and the current range's position. Must be random-access range of ubyte.
     ubyte[] slice(NullBuffer m){ return null; }
@@ -94,13 +89,16 @@ struct NullBuffer {
 
 /**
     Test if can slice $(D Buffer)'s data directly, without taking a copy.
-    The buffer type has to provide slice having type of $(D immutable(byte)[]).
+    The buffer type has to provide a slice as random access range
+    having element type of $(D immutable(byte)).
 */
 enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (Buffer buf){
+    import std.range;
     auto m = buf.save();
     //slice may as well take only L-values
     alias SliceType = typeof(buf.slice(m));
-    static assert(is(SliceType : immutable(ubyte)[]));
+    static assert(isRandomAccessRange!SliceType);
+    static assert(is(ElementType!SliceType == immutable(ubyte)));
 });
 
 /**
@@ -130,7 +128,6 @@ enum isInputStream(Stream) = __traits(compiles, (ref Stream s){
     assert(s.eof);
     s.close();
 });
-
 
 ///A do nothing implementation of InputStream concept.
 struct NullInputStream
