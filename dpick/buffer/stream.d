@@ -5,6 +5,22 @@ import dpick.buffer.traits;
 import std.range, std.algorithm, std.exception;
 
 version(Windows)
+int win32Enforce(lazy int cond, string file=__FILE__, int line=__LINE__)
+{
+    import core.sys.windows.windows;
+    import std.string;
+    enum ERROR_BROKEN_PIPE = 109;
+    int r = cond;
+    if(!r){
+        uint code = GetLastError();
+        if(code != 0 && code != ERROR_BROKEN_PIPE){
+            throw new Exception(format("WinAPI system error %d", code), file, line);
+        }
+    }
+    return r;
+}
+
+version(Windows)
 struct Win32FileInput {
     @disable this(this);
 
@@ -33,22 +49,23 @@ struct Win32FileInput {
             result.ptr, GENERIC_READ, cast(uint)FILE_SHARE_READ, null,
             cast(uint)OPEN_EXISTING, cast(uint)FILE_ATTRIBUTE_NORMAL, null
         );
-        enforce(file != INVALID_HANDLE_VALUE);
+        win32Enforce(file != INVALID_HANDLE_VALUE);
     }
 
     size_t read(ubyte[] dest){
         if (exhasted)
             return 0;
         size_t got;
-        enforce(ReadFile(file, dest.ptr, dest.length, &got, null));
-        if (got != dest.length)
+        auto ok = win32Enforce(ReadFile(file, dest.ptr, dest.length, &got, null));
+        if (!ok || got == 0){
             exhasted = true;
+        }
         return got;
     }
 
     void close(){
         if(file != INVALID_HANDLE_VALUE){
-            enforce(CloseHandle(file));
+            win32Enforce(CloseHandle(file));
             file = INVALID_HANDLE_VALUE;
         }
     }
@@ -58,6 +75,11 @@ struct Win32FileInput {
 private:
     static inout(ushort)[] repr(inout(wchar)[] arg) { 
         return cast(inout(ushort)[])arg;
+    }
+    this(int fd)
+    {
+        assert(fd == 0);
+        file = GetStdHandle(STD_INPUT_HANDLE);
     }
     HANDLE file = INVALID_HANDLE_VALUE;
     bool exhasted;
@@ -98,6 +120,11 @@ struct PosixFileInput {
     @property bool eof(){ return exhasted; }
 
 private:
+    this(int fd)
+    {
+        assert(fd == 0);
+        file = fd;
+    }
     int file = -1;
     bool exhasted;
 }
@@ -132,6 +159,14 @@ auto fileInput(C)(in C[] path)
     }
     else
         static assert("Unsupported platform");
+}
+
+/**
+    Create a buffer stream for the standard input (file descriptor zero).
+*/
+auto stdInput()
+{
+    return FileInput(0);
 }
 
 static assert(isInputStream!FileInput);
