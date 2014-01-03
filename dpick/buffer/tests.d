@@ -3,7 +3,7 @@ module dpick.buffer.tests;
 import dpick.buffer;
 
 unittest
-{
+{    
     import std.stdio, std.path, std.range, std.conv, std.algorithm;
     import std.file : tempDir;
     auto tmpName = buildPath(tempDir, "trash0000");
@@ -12,6 +12,7 @@ unittest
         f.rawWrite(iota(1, 250).map!"cast(ubyte)a".array);
     }
     auto buf = buffer(fileInput(tmpName), 2, 16, 4);
+    static assert(isBuffer!(typeof(buf)));
     assert(!buf.empty);
     assert(buf.front == 1);
     assert(buf.lookahead(10).length == 10);

@@ -3798,7 +3798,7 @@ private @trusted auto matchOnce(alias Engine, RegEx, Buffer)
 private auto matchMany(alias Engine, RegEx, R)(R input, RegEx re)
 {
     re.flags |= RegexOption.global;
-    return RegexMatch!(R, Engine)(input, re);
+    return RegexMatch!(R, Engine)(move(input), re);
 }
 
 unittest
@@ -3846,31 +3846,31 @@ template isRegexFor(RegEx, R)
 
 
 //UTF-8 buffer
-public auto matchFirst(R, RegEx)(ref R input, RegEx re)
+public auto matchFirst(R, RegEx)(R input, RegEx re)
     if(isBuffer!R && is(RegEx == Regex!(char)))
 {
-    return matchOnce!ThompsonMatcher(input, re);
+    return matchOnce!ThompsonMatcher(move(input), re);
 }
 
 ///ditto
-public auto matchFirst(R, String)(ref R input, String re)
+public auto matchFirst(R, String)(R input, String re)
     if(isBuffer!R && isSomeString!String)
 {
-    return matchOnce!ThompsonMatcher(input, regex(re));
+    return matchOnce!ThompsonMatcher(move(input), regex(re));
 }
 
 
-public auto matchAll(R, RegEx)(ref R input, RegEx re)
+public auto matchAll(R, RegEx)(R input, RegEx re)
     if(isBuffer!R && is(RegEx == Regex!(char)))
 {
-    return matchMany!ThompsonMatcher(input, re);
+    return matchMany!ThompsonMatcher(move(input), re);
 }
 
 ///ditto
-public auto matchAll(R, String)(ref R input, String re)
+public auto matchAll(R, String)(R input, String re)
     if(isBuffer!R && isSomeString!String)
 {
-    return matchMany!ThompsonMatcher(input, regex(re));
+    return matchMany!ThompsonMatcher(move(input), regex(re));
 }
 
 // another set of tests just to cover the new API

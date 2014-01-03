@@ -18,7 +18,7 @@ module dpick.buffer.traits;
         auto s = buf.slice(m);
         alias S = typeof(s);
         static assert(isRandomAccessRange!S);
-        //static assert(is(ElementType!S : ubyte));
+        static assert(is(ElementType!S : ubyte));
         buf = m;
         assert(buf.seek(-5));
         assert(buf.seek(5));
@@ -40,7 +40,7 @@ enum isBuffer(T) = __traits(compiles, (T buf){
         auto s = buf.slice(m);
         alias S = typeof(s);
         static assert(isRandomAccessRange!S);
-        //static assert(is(ElementType!S : ubyte));
+        static assert(is(ElementType!S : ubyte));
         buf = m;
         assert(buf.seek(-5));
         assert(buf.seek(5));

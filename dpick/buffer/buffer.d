@@ -170,7 +170,7 @@ struct GenericBufferRef(Impl)
         }
     }
 
-    auto save(){
+    @property auto save(){
         This copy;
         copy.ptr = fork();
         return copy;
@@ -535,6 +535,7 @@ unittest
     ubyte[] arr = iota(cast(ubyte)10, cast(ubyte)100).array;
     //simple stream - slice a piece of array
     auto buf = buffer(ChunkArray(arr), 2, 4, 2);
+    static assert(isBuffer!(typeof(buf)));
     assert(!buf.empty);
     assert(buf.lookbehind(10) == null);
     assert(buf.front == 10);
