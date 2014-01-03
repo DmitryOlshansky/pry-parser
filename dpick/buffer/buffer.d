@@ -28,7 +28,13 @@ struct ArrayBuffer(T) {
         cur++;
     }
 
-    void seek(ptrdiff_t offset){ cur += offset; }
+    bool seek(ptrdiff_t offset){
+        if (cur + offset <= data.length) {
+            cur += offset;
+            return true;
+        }
+        return false;
+    }
 
     ptrdiff_t tell()(auto ref ArrayBuffer m){ return cur - m.cur; }
 
@@ -135,7 +141,7 @@ private static void apply(alias fn, Impl)(NodeT!Impl* start)
 private void printRefs(Impl)(NodeT!Impl* node)
 {
     import std.stdio;
-    apply!(p => writefln("%x pos=%d, cnt=%d, prev=%x, next=%x", 
+    apply!(p => writefln("%x pos=%d, cnt=%d, prev=%x, next=%x",
         p, p.pos, p.cnt, p.prev, p.next))(node);
 }
 
@@ -175,17 +181,16 @@ struct GenericBufferRef(Impl)
     }
 
     ubyte[] slice(ref This r) {
-        return ptr.pos <= r.ptr.pos ? 
-                impl.window[ptr.pos .. r.ptr.pos] : 
+        return ptr.pos <= r.ptr.pos ?
+                impl.window[ptr.pos .. r.ptr.pos] :
                 impl.window[r.ptr.pos .. ptr.pos];
     }
 
-    void seek(ptrdiff_t ofs) {
+    bool seek(ptrdiff_t ofs) {
         bool seekable = ensureSeekable(ofs);
-        assert (seekable); //TODO: switch to bool seek(ptrdiff_t ofs) 
-        //if (seekable)
-        ptr.pos += ofs;
-        //return seekable;
+        if (seekable)
+            ptr.pos += ofs;
+        return seekable;
     }
 
     //
@@ -196,11 +201,11 @@ struct GenericBufferRef(Impl)
     //
     ubyte[] lookbehind(size_t n){
         return ensureSeekable(-cast(ptrdiff_t)n) ?
-            impl.window[ptr.pos .. ptr.pos + n] : null;
+            impl.window[ptr.pos - n .. ptr.pos] : null;
     }
 
     //created a new (shared) copy of this ref
-    this(this){        
+    this(this){
         if (ptr)
             ptr.cnt++;
     }
@@ -307,13 +312,15 @@ private:
             return false;
         if (impl.window.length > val)
             return true;
-        if (impl.last)
-            return false;
-        //must have at least 1 byte before the end of window
+        if (impl.last) {
+            return impl.window.length == val;
+        }
+        //must try to have at least 1 byte before the end of window
         read(val - impl.window.length + 1);
-        // current position may have changed during the read
-        // but it must end up inside of the buffer
-        return ptr.pos + ofs < impl.window.length;
+        // current position may have changed
+        // during the read (or window size extended)
+        // but it must end up inside the buffer
+        return ptr.pos + ofs <= impl.window.length;
     }
 
     // a wrapper to read no less then n new bytes
@@ -353,7 +360,7 @@ struct FakeBufferImpl
     {
         return 0;
     }
-    
+
     @property bool last(){ return true; }
 
     void dispose(){ closed++; }
@@ -366,7 +373,7 @@ unittest
 {
     alias Buf = GenericBufferRef!FakeBufferImpl;
     auto impl = new FakeBufferImpl;
-    {   
+    {
         //w/o but save
         auto buf = Buf(impl);
         //2 postblits
@@ -396,13 +403,13 @@ unittest
 
 /*
     A buffer implementation that works with any type compatible
-    with InputStream concept. The implementation uses a 
-    plain array buffer internally. 
+    with InputStream concept. The implementation uses a
+    plain array buffer internally.
 
-    On each request to load another X bytes it then chooses between 
+    On each request to load another X bytes it then chooses between
     compaction and expansion of the current window to satisfy
     the request.
-    
+
 */
 struct GenericBufferImpl(Input)
     if(isInputStream!Input)
@@ -458,7 +465,7 @@ struct GenericBufferImpl(Input)
             return 0;
         }
     }
-    
+
     @property bool last(){ return ended; }
 
     void dispose(){
@@ -473,12 +480,12 @@ private:
             if(input.eof) //true end of stream
                 ended = true;
             else //short-read, e.g. on a socket, port - reuse the array
-                buffer.assumeSafeAppend(); 
+                buffer.assumeSafeAppend();
         }
     }
-    ubyte[] buffer; //big enough to contain all present marks 
+    ubyte[] buffer; //big enough to contain all present marks
     bool ended; // no more bytes to read  TODO: merge as bit-field with 'history'
-    size_t pageMask; //bit mask - used for fast rounding to multiple of page    
+    size_t pageMask; //bit mask - used for fast rounding to multiple of page
     size_t history; // minimal amount of bytes to keep during compaction
     Input input;
 }
@@ -540,7 +547,7 @@ unittest
         assert(luk[5] == v+5);
         buf.popFront();
     }
-    /*
+
     assert(buf.lookbehind(2).equal([38, 39]));
     {
         auto m = buf.save;
@@ -555,7 +562,7 @@ unittest
         buf.seek(-30);
         auto lukA = buf.lookahead(30);
         assert(lukB == lukB);
-        buf = m;
+        buf = m.save;
         buf.seek(30);
         assert(m.slice(m2).empty);
         assert(equal(buf.slice(m2), buf.slice(m)));
@@ -563,11 +570,11 @@ unittest
     }
     auto m = buf.save;
     assert(equal(&buf, iota(70, 100)));
-    buf = m;
+    buf = m.save;
     assert(buf.tell(m) ==  0);
     assert(equal(&buf, iota(70, 100)));
     assert(equal(buf.slice(m), iota(70, 100)));
-    assert(buf.lookahead(10) == null);*/
+    assert(buf.lookahead(10) == null);
 }
 
 //Decoding on buffers
