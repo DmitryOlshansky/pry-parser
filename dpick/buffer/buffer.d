@@ -3,7 +3,7 @@ module dpick.buffer.buffer;
 import std.algorithm, std.range, std.traits;
 import dpick.buffer.traits;
 
-/**
+/*
     Buffer for wrapping arrays, all operations work directly on the array
     offering no extra overhead.
 */
@@ -55,9 +55,12 @@ private:
 }
 
 /**
-     Wrap an array as buffer.
+     Wrap an array as _buffer.
      If the original array had immutable elements then the resulting
-     buffer supports zero-copy slicing.
+     _buffer supports zero-copy slicing.
+
+     See also $(DPREF2 _buffer, traits, isBuffer) 
+     and $(DPREF2 _buffer, traits, NullBuffer).
 */
 auto buffer()(ubyte[] data)
 {
@@ -491,10 +494,15 @@ private:
 }
 
 /**
-    Creates a bufer range that takes ownership of $(D stream) input stream.
-    Tweakable parameters include initial buffer size,
-    a block size of the buffer,
+    Creates a _bufer range that takes ownership of $(D stream) input stream.
+    Tweakable parameters include initial _buffer size,
+    a block size of the _buffer,
     and minimal history (in bytes) to keep for lookbehind during buffering.
+
+    See also $(DPREF2 _buffer, stream, fileInput),
+    $(DPREF2 _buffer, traits, isInputStream),
+    $(DPREF2 _buffer, traits, isBuffer),
+    and $(DPREF2 _buffer, traits, NullBuffer).
 */
 auto buffer(Input)(Input stream, size_t minHistory=32,
     size_t bufferSize=8*1024, size_t page=512)

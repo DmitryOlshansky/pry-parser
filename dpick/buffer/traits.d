@@ -88,9 +88,9 @@ struct NullBuffer {
 }
 
 /**
-    Test if can slice $(D Buffer)'s data directly, without taking a copy.
+    Test if can retain $(D Buffer)'s data slices directly, without taking a copy.
     The buffer type has to provide a slice as random access range
-    having element type of $(D immutable(byte)).
+    having element type of $(D immutable(ubyte)).
 */
 enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (Buffer buf){
     import std.range;
@@ -120,7 +120,7 @@ enum isZeroCopy(Buffer)  = isBuffer!Buffer && __traits(compiles, (Buffer buf){
     In particular this allows class-based polymorphic $(D Stream) implementations
     to work w/o relying on nondeterministic GC finalization.
 
-    See also $(LREF NullInputStream).
+    See also $(DPREF2 _buffer, traits, NullInputStream).
 */
 enum isInputStream(Stream) = __traits(compiles, (ref Stream s){
     ubyte[] buf;

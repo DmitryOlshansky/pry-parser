@@ -138,9 +138,10 @@ else
     static assert("Unsupported platform");
 
 /**
-    Create an input stream from file, that directly uses system I/O calls.
+    Create an input stream from a file, directly using system I/O calls.
     
-    See also dpick.buffer.traits.isInputStream.
+    See also $(DPREF2 _buffer, traits, isBuffer)
+    and $(DPREF2 _buffer, traits, NullBuffer).
 */
 auto fileInput(C)(in C[] path)
     if(is(C : dchar))
@@ -163,7 +164,10 @@ auto fileInput(C)(in C[] path)
 }
 
 /**
-    Create a buffer stream for the standard input (file descriptor zero).
+    Create an input stream for the standard input (file descriptor zero).
+    
+    See also $(DPREF2 _buffer, traits, isBuffer)
+    and $(DPREF2 _buffer, traits, NullBuffer).
 */
 auto stdInput()
 {
