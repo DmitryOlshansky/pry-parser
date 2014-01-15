@@ -56,7 +56,7 @@ struct Win32FileInput {
         if (exhasted)
             return 0;
         size_t got;
-        auto ok = win32Enforce(ReadFile(file, dest.ptr, dest.length, &got, null));
+        auto ok = win32Enforce(ReadFile(file, cast(void*)dest.ptr, cast(uint)dest.length, cast(uint*)&got, cast(OVERLAPPED*)null));
         if (!ok || got == 0){
             exhasted = true;
         }
