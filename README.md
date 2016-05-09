@@ -1,4 +1,4 @@
-datapicked
+Pry
 ==========
 
-Data Picked is experimental flexible data extraction library
+Pry is an experimental flexible data extraction library
