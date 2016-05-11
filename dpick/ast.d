@@ -26,21 +26,12 @@ mixin template Visitable()
 }
 
 //
-class DataExpr : Ast
-{
-@safe pure:
-    DataPiece[] items;
-    this(DataPiece[] pieces)
-    {
-        items = pieces;
-    }
-}
-
 class DataAlt : DataExpr
 {
     mixin Visitable;
 @safe pure:
-    this(DataPiece[] pieces)
+    DataSeq[] items;
+    this(DataSeq[] pieces)
     {
         super(pieces);
     }    
@@ -49,11 +40,13 @@ class DataAlt : DataExpr
 class DataSeq : DataExpr
 {
     mixin Visitable;
-@safe pure:    
-    this(DataPiece[] pieces)
+@safe pure:
+    string id; 
+    DataPiece[] items;    
+    this(string id, DataPiece[] pieces)
     {
         super(pieces);
-    }    
+    }
 }
 
 class DataPiece : Ast
@@ -70,69 +63,20 @@ class DataPiece : Ast
     }
 }
 
-class DataAtom : Ast
-{
-@safe pure:
-    AliasExpr aliasExpr;
-    this(AliasExpr a)
-    {
-        aliasExpr = a;
-    }
-}
+class DataAtom : Ast{}
 
-class EntityAtom : DataAtom
-{
-    mixin Visitable;
-@safe pure:
-    EntityExpr entity;
-    this(EntityExpr e, AliasExpr a)
-    {
-        super(a);
-        entity = e;
-    }
-}
+class EntityAtom : DataAtom{}
 
 class ExprAtom : DataAtom
 {
     mixin Visitable;
 @safe pure:
     DataExpr expr;
-    this(DataExpr e, AliasExpr a)
+    this(DataExpr e)
     {
-        super(a);
         expr = e;        
     }
 }
-
-class AliasExpr : Ast
-{
-    mixin Visitable;
-@safe pure:
-    bool ignorable;
-    string primary;
-    AliasAtom[] others;
-    this(bool ignore, string primeId, AliasAtom[] a)
-    {
-        ignorable = ignore;
-        primary = primeId;
-        others = a;
-    }    
-}
-
-class AliasAtom : Ast
-{
-    mixin Visitable;
-@safe pure:
-    string id;
-    Expr expr;    
-    this(string name, Expr e)
-    {
-        id = name;
-        expr = e;
-    }    
-}
-
-class EntityExpr : Ast {}
 
 class NameExpr : EntityExpr
 {
