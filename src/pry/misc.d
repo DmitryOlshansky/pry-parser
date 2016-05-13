@@ -1,4 +1,4 @@
-module dpick.misc;
+module pry.misc;
 
 struct Stack(T)
 {

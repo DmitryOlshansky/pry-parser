@@ -1,0 +1,39 @@
+//BSN DataPicked format
+//external definitions: byte, int32, int64, double, bool
+import pry.bsonlexer;
+
+root = Document;
+
+Document = int32 len, (Element items)*, 0x0;
+Element = Double | String | EmbDocument | Array
+         | Binary | Undefined | ObjectId | Bool
+         | Utc | Null | Regex | DbPointer
+         | JavaScript | Symbol | JavaScriptScope
+         | Int | Timestamp | Int64 | MinKey | MaxKey;
+
+Double = 0x01, key=cstring, double value;
+String = 0x02, key=cstring, value=string;
+EmbDocument = 0x03, key=cstring, value=Document;
+Array = 0x04, key=cstring, value=Document;
+Binary = 0x05, key=cstring, value=binary;
+Undefined = 0x06, key=cstring;
+ObjectId = 0x07, key=cstring, value=byte{12};
+Bool = 0x08, key=cstring, value=bool;
+Utc = 0x09, key=cstring, value=int64;
+Null = 0x0A, cstring key;
+Regex = 0x0B, key=cstring, value=(cstring, cstring);
+DbPointer = 0x0C, key=cstring, value=(string, byte{12});
+JavaScript = 0x0D, key=cstring, value=string;
+Symbol = 0x0E, key=cstring, value=string;
+JavaScriptScope = 0x0F, key=cstring, value=code_w_s;
+Int =  0x10, key=cstring, value=int32;
+Timestamp = 0x11, key=cstring, value=int64;
+Int64 = 0x12, key=cstring, value=int64;
+MinKey = 0xFF, key=cstring;
+MaxKey = 0x7F, key=cstring;
+
+//"primitives" 
+string = size=int32, value=byte{size-1}, 0x0 return value;
+cstring = value=[0x01-0xFF]*, 0x00 return value;
+binary = size=int32, [0x0-0x05 0x80], value=byte{size} return value;
+code_w_s = size=int32, string code, Document mapping;

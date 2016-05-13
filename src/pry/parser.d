@@ -1,6 +1,6 @@
-module dpick.parser;
+module pry.parser;
 
-import dpick.ast, dpick.misc;
+import pry.ast, pry.misc;
 
 import std.algorithm, std.range, std.exception, std.typecons;
 import std.typetuple;
@@ -17,6 +17,8 @@ pure @safe nothrow bool isAlpha()(dchar c)
 alias isDigit = ascii.isDigit;
 alias isWhite = ascii.isWhite;
 alias isHexDigit = ascii.isHexDigit;
+
+enum anonymous = "__anonymous__";
 
 class ParseException : Exception
 {
@@ -47,7 +49,7 @@ private struct Parser
     {
         skipWs();
         while(!input.empty)
-        {            
+        {
             parseDeclaration();
             skipWs(false); //may hit EOF
         }
@@ -56,11 +58,11 @@ private struct Parser
         return decls;
     }
 
-    //Declaration : id '=' DataExpr ';'
+    //Declaration : id ':' DataExpr ';'
     void parseDeclaration()
     {
         string id = parseId();
-        check('=');
+        check(':');
         DataExpr expr = parseDataExpr();
         check(';');
         if(id in decls)
@@ -72,21 +74,43 @@ private struct Parser
     //         : DataAlternative
     DataExpr parseDataExpr()
     {
-        DataPiece[] pieces;
-        pieces ~= parseDataPiece();
+        DataSeq[] pieces;
+        pieces ~= parseDataSeq();
         //alternation
-        //DataAlternative : DataPiece ('|' DataPiece )+
+        //DataAlternative : DataSeq ('|' DataSeq )+
         if(match('|'))
         {
             do
             {
-                pieces ~= parseDataPiece();
+                pieces ~= parseDataSeq();
             }
-            while(match('|'));            
-            return new DataAlt(pieces);
+            while(match('|'));
+            
         }
-        //sequence
-        //DataSequence : DataPiece (',' DataPiece)*
+        return new DataAlt(pieces);
+    }
+    
+    //sequence
+    //DataSequence : DataPiece+ (',' DataPiece+)*
+    DataSeq parseDataSeq()
+    {
+        DataPiece[] pieces;
+        auto save = input.save;
+        string name = anonymous;
+        try {
+            name = parseId();
+            if(!match("="))
+            {
+                name = anonymous;
+                input = save;
+            }
+        }
+        catch(Exception)
+        {
+            input = save;
+        }
+
+        pieces ~= parseDataPiece;
         if(match(','))
         {
             do
@@ -95,8 +119,7 @@ private struct Parser
             }
             while(match(','));
         }
-        //falthrough - 1 item is also a sequence
-        return new DataSeq(pieces);
+        return new DataSeq(name, pieces);
     }
 
     //DataPiece : DataAtom
@@ -111,7 +134,7 @@ private struct Parser
         {
             low = 0;
         }
-        else if(match("*")) 
+        else if(match("*"))
         {
             low = 0;
             high = INF;
@@ -125,14 +148,14 @@ private struct Parser
         {
             Expr e = parseExpression(), e2;
             if(match(","))
-                e2 = parseExpression();            
+                e2 = parseExpression();
             check("}");
             return new DataPiece(a, e, e2 ? e2 : e);
         }
         return new DataPiece(a, new Number(low), new Number(high));
     }
 
-    //DataAtom : EntityExpr AliasExpr 
+    //DataAtom : EntityExpr AliasExpr
     //         : '(' DataExpr ')' AliasExpr
     DataAtom parseDataAtom()
     {
@@ -140,49 +163,9 @@ private struct Parser
         {
             DataExpr expr = parseDataExpr();
             check(')');
-            auto ret =  new ExprAtom(expr, parseAliasExpr());            
+            auto ret =  new ExprAtom(expr, parseAliasExpr());
             return ret;
-        }        
-        EntityExpr expr = parseEntityExpr();        
-        return new EntityAtom(expr, parseAliasExpr());
-    }
-
-    //AliasExpr : '!'? Name? (':' AliasAtom*)?
-    AliasExpr parseAliasExpr()
-    {
-        bool ignore = match('!');
-        string name = null;
-        skipWs();
-        if(isAlpha(input.front))
-            name = parseId();
-        AliasAtom[] aliases = null;
-        if(match(':'))
-        {
-            for(;;)
-            {
-                skipWs();
-                if(!isAlpha(input.front))
-                    break;
-                aliases ~= parseAliasAtom();
-            }
         }
-        return new AliasExpr(ignore, name, aliases);
-    }
-
-    //AliasAtom : Expr '->' Name
-    AliasAtom parseAliasAtom()
-    {
-        Expr e = parseExpression();
-        check("->");
-        string name = parseId();
-        return new AliasAtom(name, e);
-    }
-
-    //EntityExpr : Name 
-    //           : BytePattern
-    //           : StringPattern
-    EntityExpr parseEntityExpr()
-    {
         skipWs();
         if(match('\"'))
         {
@@ -191,29 +174,30 @@ private struct Parser
         if(input.front == '[' || isDigit(input.front))
             return parseBytePattern();
         if(isAlpha(input.front))
-            return new NameExpr(parseId());
+            return new Nameatom(parseId());
         error(`expected one of '"', digit or alphabetic character`);
         assert(0);
     }
 
+
     //StringPattern : '"' CharClass+ '"'
     //1st quote already matched
-    StringPattern parseStringPattern()
+    DataAtom[] parseStringPattern()
     {
-        CharClass[] pat;
+        DataAtom[] pat;
         //CharClass : [^\\\[\]]
         //          : '\' [\\\[\]]
         //          : '[' '^'? RangeExpr+ ']'
     OuterLoop:
         for(;;)
-        {   
+        {
             //TODO: must handle full Unicode with std.uni stuff
             //once it is CTFE-able
             auto ch = input.front;
             switch(ch)
             {
                 case '[':
-                    auto mask = new CharMask;
+                    auto mask = new StringPattern;
                     do
                     {
                         auto pair = parseRangeExpr();
@@ -227,7 +211,7 @@ private struct Parser
                         error("unterminated escape sequence");
                     ch = input.front;
                     if(ch != '\\' && ch != '[' && ch != ']' && ch !='"')
-                        error("incorrect escape sequence");                    
+                        error("incorrect escape sequence");
                     break;
                 case '"':
                     input.popFront();
@@ -241,41 +225,35 @@ private struct Parser
             if(input.empty)
                 error("unterminated string pattern");
         }
-        return new StringPattern(pat);
+        return pat;
     }
 
-    //BytePattern : ByteClass+
+    // BytePattern
     BytePattern parseBytePattern()
     {
-        ByteClass[] pat = null;
-        for(;;)
-        {   
-            skipWs();
-            if(match("["))
+        DataAtom pat = null;
+        skipWs();
+        if(match("["))
+        {
+            auto mask = new BytePattern;
+            do
             {
-                auto mask = new ByteMask;
-                do
-                {
-                    auto pair = parseRangeExpr();
-                    mask.mark(pair[0], pair[1]);
-                }while(!match("]"));
-                pat ~= mask;
-                continue;
-            }
-            if(isDigit(input.front))
-            {
-                int v = parseNum();
-                pat ~= new Byte(cast(ubyte)v);
-                continue;
-            }
-            break;
+                auto pair = parseRangeExpr();
+                mask.mark(pair[0], pair[1]);
+            }while(!match("]"));
+            pat = mask;
         }
-        return new BytePattern(null);
+        else if(isDigit(input.front))
+        {
+            int v = parseNum();
+            pat = new Byte(cast(ubyte)v);
+        }
+        return pat;
     }
 
     struct Op {
         string tok; //slice of str that matches
-        //-1 - end paren, 0 - start paren 
+        //-1 - end paren, 0 - start paren
         //else higher - greater priority
         int  priority;
         int  arity;
@@ -290,13 +268,13 @@ private struct Parser
         binOp("+", 20), binOp("-", 20),
         binOp("<<", 10), binOp(">>", 10),
         binOp("<", 8), binOp(">", 8),
-        //equality? binOp("==", 7)
+        binOp("==", 7),
         binOp("&", 5),
-        binOp("^", 4), 
+        binOp("^", 4),
         binOp("|", 3),
         binOp(".", 2),
         //delimeters these terminate the expresion
-        Op("->", TERMINATOR, 0), Op("}", TERMINATOR, 0), Op(",", TERMINATOR, 0),
+        Op("}", TERMINATOR, 0), Op(",", TERMINATOR, 0),
         Op("(", OPEN, 0xBEAF), Op(")", CLOSE, 0xBEAF)
     );
     static immutable opTable = [ operators ];
@@ -341,11 +319,11 @@ private struct Parser
         assert(0);
     }
 
-    
+
 
     //TODO: full expression tree, use operator precedence grammar
     Expr parseExpression()
-    {    
+    {
         Stack!Op opStack;
         Stack!Expr valStack;
         void collapseStackUntil(bool delegate(Op )@safe pred)
@@ -403,7 +381,7 @@ private struct Parser
                     break;
                 }
                 pushOp(op);
-            }                
+            }
         }
         //TODO: squash the stack and yeild final result
         collapseStackUntil(op => true);
@@ -427,10 +405,10 @@ private struct Parser
     string parseId()
     {
         skipWs();
-        auto save = input; 
+        auto save = input;
         if(!isAlpha(input.front))
             error("expected alphabetic character");
-        input.popFront();        
+        input.popFront();
         input = input.find!(x => !isAlpha(x) && !isDigit(x));
         return save[0..$-input.length];
     }
@@ -441,7 +419,7 @@ private struct Parser
     {
         skipWs();
         if(!isDigit(input.front))
-            error("expected digit character");        
+            error("expected digit character");
         int val = input.front - '0';
         input.popFront();
         if(val == 0 && input.front == 'x')
@@ -484,9 +462,9 @@ private struct Parser
             int d;
             if(ch >= '0' && ch <= '9')
                 d = ch - '0';
-            else if(ch >= 'A' && ch <= 'F') 
+            else if(ch >= 'A' && ch <= 'F')
                 d = ch - 'A' + 10;
-            else if(ch >= 'a' && ch <= 'f') 
+            else if(ch >= 'a' && ch <= 'f')
                 d = ch - 'a' + 10;
             else
                 break;
@@ -495,7 +473,7 @@ private struct Parser
                 error("values may not exceed the range [0, 255]");
             input.popFront();
         }while(!input.empty);
-        return val;        
+        return val;
     }
 
     unittest
@@ -515,7 +493,7 @@ private struct Parser
             return true;
         }
         return false;
-    }    
+    }
 
     void check(const(char)[] piece...)
     {
@@ -537,7 +515,7 @@ private struct Parser
             if(input.skipOver("//"))
             {
                 input = find(input, '\n');
-                if(!input.empty) 
+                if(!input.empty)
                     input.popFront();
                 line++;
                 continue;

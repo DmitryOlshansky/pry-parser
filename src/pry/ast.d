@@ -1,7 +1,7 @@
-module dpick.ast;
+module pry.ast;
 
 import std.typetuple, std.traits;
-import dpick.misc;
+import pry.misc;
 
 alias Seq = TypeTuple;
 
@@ -25,6 +25,33 @@ mixin template Visitable()
     }
 }
 
+class ImportDecl : Ast
+{
+    mixin Visitable;
+@safe pure:
+    string mod;
+    this(string mod)
+    {
+        this.mod = mod;
+    }
+}
+
+class OptionsDecl : Ast
+{
+    mixin Visitable;
+@safe pure:
+    string id;
+    string value;
+    this(string id, string value)
+    {
+        this.id = id;
+        this.value = value;
+    }
+}
+
+
+class DataExpr : Ast {}
+
 //
 class DataAlt : DataExpr
 {
@@ -33,7 +60,19 @@ class DataAlt : DataExpr
     DataSeq[] items;
     this(DataSeq[] pieces)
     {
-        super(pieces);
+        items = pieces;
+    }    
+}
+
+class DataTup : DataExpr{
+    mixin Visitable;
+@safe pure:
+    string id; 
+    DataPiece[] items;    
+    this(string id, DataPiece[] pieces)
+    {
+        this.id = id;
+        items = pieces;
     }    
 }
 
@@ -45,7 +84,8 @@ class DataSeq : DataExpr
     DataPiece[] items;    
     this(string id, DataPiece[] pieces)
     {
-        super(pieces);
+        this.id = id;
+        items = pieces;
     }
 }
 
@@ -65,8 +105,6 @@ class DataPiece : Ast
 
 class DataAtom : Ast{}
 
-class EntityAtom : DataAtom{}
-
 class ExprAtom : DataAtom
 {
     mixin Visitable;
@@ -78,7 +116,7 @@ class ExprAtom : DataAtom
     }
 }
 
-class NameExpr : EntityExpr
+class NameAtom : DataAtom
 {
     mixin Visitable;
 @safe pure:
@@ -89,31 +127,7 @@ class NameExpr : EntityExpr
     }
 }
 
-class BytePattern : EntityExpr
-{
-    mixin Visitable;
-@safe pure:
-    ByteClass[] pattern;
-    this(ByteClass[] pat)
-    {
-        pattern = pat;
-    }
-}
-
-class StringPattern : EntityExpr
-{
-    mixin Visitable;
-@safe pure:
-    CharClass[] pattern;
-    this(CharClass[] pat)
-    {
-        pattern = pat;
-    }
-}
-
-class ByteClass : Ast{}
-
-class ByteMask : ByteClass
+class BytePattern : DataAtom
 {
     mixin Visitable;
 @safe pure:
@@ -121,7 +135,7 @@ class ByteMask : ByteClass
     alias mask this;
 }
 
-class Byte : ByteClass
+class Byte : DataAtom
 {
     mixin Visitable;
 @safe pure:    
@@ -132,18 +146,16 @@ class Byte : ByteClass
     }
 }
 
-class CharClass : Ast{}
-
-class CharMask : CharClass
+class CharPattern : DataAtom
 {
     mixin Visitable;
 @safe pure:
-    //TODO: + set of char for non-ascii part of UTF-8
+//TODO: + set of char for non-ascii part of UTF-8
     BitMask!7 ascii;
     alias ascii this;
 }
 
-class Char : CharClass
+class Char : DataAtom
 {
     mixin Visitable;
 @safe pure:     
@@ -154,10 +166,7 @@ class Char : CharClass
     }
 }
 
-class Expr : Ast
-{
-
-}
+class Expr : Ast { }
 
 class UnExpr : Expr
 {
@@ -220,11 +229,11 @@ string nullVistorFor(T...)()
 }
 
 alias AstLeafTypes =  TypeTuple!(
-    BinExpr, UnExpr, Number, Variable,
-    StringPattern, BytePattern, NameExpr, 
-    AliasAtom, AliasExpr, EntityAtom, ExprAtom, 
+    OptionsDecl, ImportDecl,
     DataPiece, DataSeq, DataAlt,
-    ByteMask, Byte, CharMask, Char
+    NameAtom, ExprAtom, 
+    BytePattern, Byte, CharPattern, Char,
+    BinExpr, UnExpr, Number, Variable
 );
 
 template EraseIf(alias pred, T...)
@@ -295,7 +304,7 @@ public auto matcher(Fns...)()
         }
         //pragma(msg, generateAdhocVisitor!(Args)(hasReturn));
         mixin(generateAdhocVisitor!(Args)(hasReturn));
-    };
+    }
     //@@@BUG@@@ static var of  nested class segfaults at R-T
     //@@@BUG@@@ ditto with scoped!Matcher - segfaults at R-T
     return new Matcher();
@@ -462,38 +471,19 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
         },
         (Number n) => formattedWrite(sink, "%d", n.value),
         (Variable var) => sink(var.id),
-        (StringPattern pat) {
-            sink(`StringPat!"`);
-            applyTo(pat.pattern, "", sink);
-            sink(`"`);
-        },
-        (BytePattern pat) {
-            sink(`BytePat!"`);
-            applyTo(pat.pattern, "", sink);
-            sink(`"`);
-        },
-        (NameExpr  n){
+        (NameAtom  n){
             sink("Name(");
             sink(n.id);
             sink(")");
         },
-        (AliasAtom a){
-            sink(a.id);
-            sink(" -> ");
-            a.expr.writeTo(sink);
-        }, 
-        (AliasExpr e){
-            applyTo(e.others, ",", sink);            
-        },
-        (EntityAtom a){ a.entity.writeTo(sink); },
         (ExprAtom a){
             sink("(");
             a.expr.writeTo(sink);
             sink(")");
         },
-        (ByteMask mask) => formattedWrite(sink, "[%s]", mask),
+        (BytePattern mask) => formattedWrite(sink, "[%s]", mask),
         (Byte b) => formattedWrite(sink, `\x%2x`, b.value),
-        (CharMask mask) => formattedWrite(sink, "[%s]", mask),
+        (CharPattern mask) => formattedWrite(sink, "[%s]", mask),
         (Char ch) => sink((&ch.ch)[0..1]),
     );
 }

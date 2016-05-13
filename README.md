@@ -48,8 +48,8 @@ pre-processing bytes/characters and 'type' to define a unit of processing - char
 and character ranges work for char and ubyte types respectively.
 
 ```
-DataExpr : DataSequence ('if' Bool-Expr)? ('return' Id)?
-         : DataAlternative
+DataExpr : DataSeq ('|' DataSeq)*
+
 ```
 `DataExpr` defines an entity in a data format. 
 
