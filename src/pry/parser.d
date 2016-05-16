@@ -163,8 +163,7 @@ private struct Parser
         {
             DataExpr expr = parseDataExpr();
             check(')');
-            auto ret =  new ExprAtom(expr, parseAliasExpr());
-            return ret;
+            return new ExprAtom(expr);
         }
         skipWs();
         if(match('\"'))
@@ -174,7 +173,7 @@ private struct Parser
         if(input.front == '[' || isDigit(input.front))
             return parseBytePattern();
         if(isAlpha(input.front))
-            return new Nameatom(parseId());
+            return new NameAtom(parseId());
         error(`expected one of '"', digit or alphabetic character`);
         assert(0);
     }
@@ -182,9 +181,9 @@ private struct Parser
 
     //StringPattern : '"' CharClass+ '"'
     //1st quote already matched
-    DataAtom[] parseStringPattern()
+    DataAtom parseStringPattern()
     {
-        DataAtom[] pat;
+        StringAtom[] pat;
         //CharClass : [^\\\[\]]
         //          : '\' [\\\[\]]
         //          : '[' '^'? RangeExpr+ ']'
@@ -197,7 +196,7 @@ private struct Parser
             switch(ch)
             {
                 case '[':
-                    auto mask = new StringPattern;
+                    auto mask = new CharPattern;
                     do
                     {
                         auto pair = parseRangeExpr();
@@ -225,11 +224,11 @@ private struct Parser
             if(input.empty)
                 error("unterminated string pattern");
         }
-        return pat;
+        return new StringPattern(pat);
     }
 
     // BytePattern
-    BytePattern parseBytePattern()
+    DataAtom parseBytePattern()
     {
         DataAtom pat = null;
         skipWs();
@@ -310,7 +309,6 @@ private struct Parser
                             return operators[idx];
                         }
                     }
-                    goto default;
                 }
             }
         default:
@@ -326,7 +324,7 @@ private struct Parser
     {
         Stack!Op opStack;
         Stack!Expr valStack;
-        void collapseStackUntil(bool delegate(Op )@safe pred)
+        void collapseStackUntil(bool delegate(Op ) pure @safe pred)
         {
             while(!opStack.empty && pred(opStack.top))
             {

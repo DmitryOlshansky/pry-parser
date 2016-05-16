@@ -7,7 +7,7 @@ alias Seq = TypeTuple;
 
 abstract class Ast
 {
-    abstract bool accept(Visitor walker);    
+    abstract bool accept(Visitor walker);
     override string toString()
     {
         import std.array;
@@ -52,7 +52,7 @@ class OptionsDecl : Ast
 
 class DataExpr : Ast {}
 
-//
+/// Alternation (Tagged union) of Tuples
 class DataAlt : DataExpr
 {
     mixin Visitable;
@@ -61,27 +61,27 @@ class DataAlt : DataExpr
     this(DataSeq[] pieces)
     {
         items = pieces;
-    }    
+    }
 }
 
+// Tuple of DataSeq's
 class DataTup : DataExpr{
     mixin Visitable;
 @safe pure:
-    string id; 
-    DataPiece[] items;    
-    this(string id, DataPiece[] pieces)
+    DataSeq[] items;
+    this(DataSeq[] pieces)
     {
-        this.id = id;
         items = pieces;
-    }    
+    }
 }
 
+/// Concat of DataPieces
 class DataSeq : DataExpr
 {
     mixin Visitable;
 @safe pure:
-    string id; 
-    DataPiece[] items;    
+    string id;
+    DataPiece[] items;
     this(string id, DataPiece[] pieces)
     {
         this.id = id;
@@ -89,6 +89,7 @@ class DataSeq : DataExpr
     }
 }
 
+/// Single atom + optional quantifier
 class DataPiece : Ast
 {
     mixin Visitable;
@@ -105,6 +106,7 @@ class DataPiece : Ast
 
 class DataAtom : Ast{}
 
+/// Parenthesied data expression as atom
 class ExprAtom : DataAtom
 {
     mixin Visitable;
@@ -112,10 +114,11 @@ class ExprAtom : DataAtom
     DataExpr expr;
     this(DataExpr e)
     {
-        expr = e;        
+        expr = e;
     }
 }
 
+/// Named production as atom
 class NameAtom : DataAtom
 {
     mixin Visitable;
@@ -127,6 +130,7 @@ class NameAtom : DataAtom
     }
 }
 
+/// Byte class pattern as atom
 class BytePattern : DataAtom
 {
     mixin Visitable;
@@ -135,10 +139,11 @@ class BytePattern : DataAtom
     alias mask this;
 }
 
+/// Single byte value as atom
 class Byte : DataAtom
 {
     mixin Visitable;
-@safe pure:    
+@safe pure:
     ubyte value;
     this(ubyte val)
     {
@@ -146,7 +151,21 @@ class Byte : DataAtom
     }
 }
 
-class CharPattern : DataAtom
+class StringPattern : DataAtom
+{
+    mixin Visitable;
+@safe pure:
+    StringAtom[] items;
+    this(StringAtom[] atoms)
+    {
+        items = atoms;
+    }
+}
+
+class StringAtom : Ast {}
+
+/// Single character class as atom
+class CharPattern : StringAtom
 {
     mixin Visitable;
 @safe pure:
@@ -155,10 +174,11 @@ class CharPattern : DataAtom
     alias ascii this;
 }
 
-class Char : DataAtom
+/// Single character as atom
+class Char : StringAtom
 {
     mixin Visitable;
-@safe pure:     
+@safe pure:
     char ch;
     this(char c)
     {
@@ -166,8 +186,10 @@ class Char : DataAtom
     }
 }
 
+/// A subset of D expression
 class Expr : Ast { }
 
+/// Unary expression
 class UnExpr : Expr
 {
     mixin Visitable;
@@ -181,6 +203,7 @@ class UnExpr : Expr
     }
 }
 
+/// Binary expression
 class BinExpr : Expr
 {
     mixin Visitable;
@@ -195,6 +218,7 @@ class BinExpr : Expr
     }
 }
 
+/// Constant number as expression
 class Number : Expr
 {
     mixin Visitable;
@@ -206,6 +230,7 @@ class Number : Expr
     }
 }
 
+/// Variable name as expression
 class Variable: Expr
 {
     mixin Visitable;
@@ -230,9 +255,9 @@ string nullVistorFor(T...)()
 
 alias AstLeafTypes =  TypeTuple!(
     OptionsDecl, ImportDecl,
-    DataPiece, DataSeq, DataAlt,
-    NameAtom, ExprAtom, 
-    BytePattern, Byte, CharPattern, Char,
+    DataPiece, DataSeq, DataTup, DataAlt,
+    NameAtom, ExprAtom,
+    BytePattern, Byte, StringPattern, CharPattern, Char,
     BinExpr, UnExpr, Number, Variable
 );
 
@@ -280,7 +305,7 @@ private string generateAdhocVisitor(Types...)(bool withRet)
                 calls[ts.stringof] = i;
     }
     foreach(key, val; calls)
-    {        
+    {
         ret ~= `override bool visit(`~key~` arg){`
             ~(withRet ? `ret = ` : ``)~`Fns[`
             ~to!string(val)~`](arg); return stopFlag; }`;
@@ -294,10 +319,10 @@ public auto matcher(Fns...)()
     import std.typecons;
     alias Args = staticMap!(ParameterTypeTuple, Fns);
     alias Rets = staticMap!(ReturnType, Fns);
-    //if types are different, do not return anything    
+    //if types are different, do not return anything
     enum hasReturn = !is(CommonType!Rets == void);
-    
-    class Matcher : Visitor {        
+
+    class Matcher : Visitor {
         static if(hasReturn) {
             CommonType!Rets ret;
             @property auto value(){ return ret; }
@@ -361,6 +386,13 @@ template DepthFirst(TraverseMode mode){
                     }
                     return true;
                 },
+                (DataTup tup)  {
+                    foreach(a; tup.items){
+                        if(!a.go())
+                            return false;
+                    }
+                    return true;
+                },
                 (DataAlt alt)  {
                     foreach(a; alt.items){
                         if(!a.go())
@@ -368,14 +400,21 @@ template DepthFirst(TraverseMode mode){
                     }
                     return true;
                 },
+                (StringPattern pat)  {
+                    foreach(a; pat.items){
+                        if(!a.go())
+                            return false;
+                    }
+                    return true;
+                },
                 (BinExpr e)=> e.left.go() ? e.right.go() : false,
-                (UnExpr e) => e.arg.go(), 
+                (UnExpr e) => e.arg.go(),
                 (Number n) => true,
                 (Variable var) => true,
                 (StringPattern pat) => true,
                 (BytePattern pat) => true,
                 (NameExpr  n) => true,
-                (AliasAtom a) => a.expr.go(), 
+                (AliasAtom a) => a.expr.go(),
                 (AliasExpr e){
                     foreach(a; e.others){
                         if(!a.go())
@@ -384,7 +423,7 @@ template DepthFirst(TraverseMode mode){
                     return true;
                 },
                 (EntityAtom a) => a.entity.go(),
-                (ExprAtom a) => a.expr.go(),                 
+                (ExprAtom a) => a.expr.go(),
                 (ByteMask mask) =>true,
                 (Byte b)  => true,
                 (CharMask mask) => true,
@@ -394,7 +433,7 @@ template DepthFirst(TraverseMode mode){
                 return false;
             static if(after)
                 return e.accept(fall);
-        }   
+        }
 
         bool walk(Ast node)
         {
@@ -432,11 +471,11 @@ public auto depthFirst(Fns...)(Ast node)
 void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
 {
     import std.format;
-    static void applyTo(Range)(Range items, string sep, 
+    static void applyTo(Range)(Range items, string sep,
         scope void delegate (const(char)[]) sink)
     {
         foreach(i, v; items)
-        {            
+        {
             v.writeTo(sink);
             if(i != items.length-1)
                 sink(sep);
@@ -445,7 +484,7 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
     ast.match!(
         (DataPiece dp) {
             dp.atom.writeTo(sink);
-            if(dp.low.match!((Number n) => n.value == 1) 
+            if(dp.low.match!((Number n) => n.value == 1)
             && dp.high.match!((Number n) => n.value == 1))
                 return;
             sink("{");
@@ -455,10 +494,18 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
             sink("}");
         },
         (DataSeq seq){
-            applyTo(seq.items, ",", sink);
+            applyTo(seq.items, "", sink);
+        },
+        (DataTup tup){
+            applyTo(tup.items, ",", sink);
         },
         (DataAlt alt){
-            applyTo(alt.items, "|", sink); 
+            applyTo(alt.items, "|", sink);
+        },
+        (StringPattern pat){
+            sink("\"");
+            applyTo(pat.items, "", sink);
+            sink("\"");
         },
         (BinExpr e){
             e.left.writeTo(sink);
@@ -491,11 +538,11 @@ void writeTo(Ast ast, scope void delegate (const(char)[]) sink)
 unittest
 {
     import std.stdio;
-    auto n = new NameExpr("Name");
+    auto n = new NameAtom("Name");
     auto e = new Byte(90);
 
     alias M = match!(
-        (NameExpr n) @trusted => 0,
+        (NameAtom n) @trusted => 0,
         (Byte b) @trusted => 1
     );
     assert(M(n) == 0);
