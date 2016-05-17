@@ -545,9 +545,9 @@ unittest
     enum tests = (){
         auto d = Parser("root = 0x0 ;").parse();
         assert("root" in d);
-        d = Parser(import("json.dpick")).parse();
+        d = Parser(import("json.pry")).parse();
         //writeln(d["root"]);
-        d = Parser(import("bson.dpick")).parse();
+        d = Parser(import("bson.pry")).parse();
         writeln(d["binary"]);
         return d;
     };

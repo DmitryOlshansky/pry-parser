@@ -30,9 +30,9 @@ class Codegen{
 }
 
 //the building block of IR
-class Node {
+abstract class Node {
     Target target; // == null, no data extraction in this node
-    void generate(Codegen codegen);
+    //void generate(Codegen codegen);
 }
 
 class ByteNode : Node{
