@@ -70,14 +70,13 @@ private struct Parser
         decls[id] = expr;
     }
 
-    //DataExpr : DataSequence
-    //         : DataAlternative
+    //alternation
+    //DataAlternative : DataTup ('|' DataTup )*
     DataExpr parseDataExpr()
     {
         DataSeq[] pieces;
         pieces ~= parseDataSeq();
-        //alternation
-        //DataAlternative : DataSeq ('|' DataSeq )+
+
         if(match('|'))
         {
             do
@@ -85,13 +84,26 @@ private struct Parser
                 pieces ~= parseDataSeq();
             }
             while(match('|'));
-            
+
         }
         return new DataAlt(pieces);
     }
-    
+
+    //tuple
+    // DataTup : DataSeq (',' DataSeq)*
+    DataTup parseDataTup()
+    {
+        DataSeq[] seqs;
+        seqs ~= parseDataSeq();
+        while(match(','))
+        {
+            seqs ~= parseDataSeq();
+        }
+        return new DataTup(seqs);
+    }
+
     //sequence
-    //DataSequence : DataPiece+ (',' DataPiece+)*
+    //DataSequence : DataPiece+
     DataSeq parseDataSeq()
     {
         DataPiece[] pieces;
@@ -105,19 +117,18 @@ private struct Parser
                 input = save;
             }
         }
-        catch(Exception)
-        {
+        catch(Exception){
             input = save;
         }
-
-        pieces ~= parseDataPiece;
-        if(match(','))
-        {
-            do
-            {
+        pieces ~= parseDataPiece();
+        try{
+            for(;;){
+                save = input.save;
                 pieces ~= parseDataPiece();
             }
-            while(match(','));
+        }
+        catch(Exception){
+            input = save;
         }
         return new DataSeq(name, pieces);
     }
