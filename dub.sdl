@@ -1,0 +1,4 @@
+name "pry"
+description "Pry - practical parser combinators library for D"
+authors "Dmitry Olshansky"
+targetType "library"
