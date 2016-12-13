@@ -20,7 +20,7 @@ enum isParser(Parser) = is(typeof((){
 	Stream stream;
 	auto v = parser.value;
 	bool r = parser.parse(stream);
-	Stream.Error s = parser.error(stream);
+	Stream.Error s = parser.error;
 }));
 
 /// Extract value type of a given Parser.

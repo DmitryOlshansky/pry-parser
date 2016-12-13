@@ -1,23 +1,22 @@
 module pry.combinators;
 
 import pry.traits;
+import std.meta;
 
 private auto repImpl(bool collect, size_t minTimes, P)(P parser)
 if(isParser!P){
 	alias Stream = ParserStream!P;
 	static struct Parser {
-		P p;
+		private P p;
 		static if(collect)
 			ParserValue!P[] value;
 		else
 			Stream.Range value;
-		typeof(Stream.init.context) errContext;
 
 		bool parse(ref Stream stream) {
 			auto start = stream.mark;
 			for(size_t i = 0; i<minTimes; i++) {
 				if(!p.parse(stream)){
-					errContext = stream.context;
 					stream.restore(start);
 					return false;
 				}
@@ -31,8 +30,8 @@ if(isParser!P){
 			return true;
 		}
 
-		Stream.Error error(ref Stream stream) {
-			return Stream.Error(errContext, p.error(stream).reason);
+		Stream.Error error() {
+			return p.error;
 		}
 	}
 	return Parser();
@@ -65,10 +64,148 @@ unittest
 		s = S("a");
 		assert(!p.parse(s));
 		
-		auto p2 = array(tk!'a');
-		s = S("aaa");
+		auto p2 = range!('a', 'b').array;
+		s = S("aba");
 		assert(p2.parse(s));
-		assert(p2.value == "aaa"d);
+		assert(p2.value == "aba"d);
+		assert(s.empty);
+	}
+}
+
+/// Apply a mapping function to the value of parser.
+auto map(alias f, P)(P parser)
+if(isParser!P) {
+	alias Stream = ParserStream!P;
+	static struct Parser {
+		private P p;
+		typeof(f(p.value)) value;
+
+		bool parse(ref Stream stream) {
+			if(p.parse(stream)){
+				value = f(p.value);
+				return true;
+			}
+			else
+				return false;
+		}
+
+		Stream.Error error() {
+			return p.error;
+		}
+	}
+	return Parser(parser);
+}
+
+///
+unittest {
+	import std.conv;
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto digits = range!('0', '9').rep.map!(x=>x.to!int);
+		S s = S("90");
+		assert(digits.parse(s));
+		assert(digits.value == 90);
+		s = S("a");
+		assert(!digits.parse(s));
+		assert(digits.error.context == 0);
+	}
+}
+
+/// Apply multiple parsers one after another as a sequence.
+auto seq(P...)(P parsers)
+if(allSatisfy!(isParser, P)) {
+	import std.typecons;
+	alias Stream = ParserStream!(P[0]);
+	alias Values = staticMap!(ParserValue, P);
+	static struct Parser {
+		private P parsers;
+		Tuple!Values value;
+		private size_t errorIndex;
+
+		bool parse(ref Stream stream) {
+			auto save = stream.mark;
+			foreach(i, ref p; parsers) {
+				if(!p.parse(stream)){
+					errorIndex = i;
+					stream.restore(save);
+					return false;
+				}
+				value[i] = p.value;
+			}
+			return true;
+		}
+
+		Stream.Error error() {
+			foreach(i, ref p; parsers) {
+				if(i == errorIndex){
+					return p.error;
+				}
+			}
+			assert(false);
+		}
+	}
+	return Parser(parsers);
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream;
+	import std.range.primitives, std.typecons;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto elements = seq(tk!'a', range!('a', 'd'), tk!'c');
+		S s = S("abc");
+		assert(elements.parse(s));
+		assert(s.empty);
+		assert(elements.value == tuple('a', 'b', 'c'));
+		s = S("axc");
+		assert(!elements.parse(s));
+		assert(s.front == 'a');
+		assert(elements.error.context == 1);
+	}
+}
+
+/// Try each of provided parsers until one succeeds.
+auto any(P...)(P parsers)
+if(allSatisfy!(isParser, P)) {
+	import std.variant;
+	alias Stream = ParserStream!(P[0]);
+	alias Values = NoDuplicates!(staticMap!(ParserValue, P));
+	static struct Parser {
+		private P parsers;
+		Algebraic!Values value;
+
+		bool parse(ref Stream stream) {
+			foreach(i, p; parsers) {
+				if(p.parse(stream)){
+					value = p.value;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		Stream.Error error() {
+			return parsers[$-1].error();
+		}
+	}
+	return Parser();
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream;
+	import std.range.primitives, std.conv;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto digits = range!('0', '9').rep.map!(x => x.to!int);
+		auto parser = any(tk!'a', digits);
+		S s = "10a";
+		assert(parser.parse(s));
+		assert(parser.value == 10);
+		assert(parser.parse(s));
+		assert(parser.value == cast(dchar)'a');
 		assert(s.empty);
 	}
 }

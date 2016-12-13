@@ -10,6 +10,7 @@ template parsers(Stream)
 	if(is(typeof(c) : ElementType!Stream)) {
 		static struct Parser {
 			ElementType!Stream value = c;
+			typeof(Stream.init.context) context;
 
 			static immutable msg = "expected '" ~ to!string(c) ~ "'";
 
@@ -19,12 +20,14 @@ template parsers(Stream)
 					stream.popFront();
 					return true;
 				}
-				else
+				else {
+					context = stream.context;
 					return false;
+				}
 			}
 
-			auto error(ref Stream stream){
-				return Stream.Error(stream.context, msg);
+			auto error(){
+				return Stream.Error(context, msg);
 			}
 		}
 		return Parser();
@@ -35,27 +38,36 @@ template parsers(Stream)
 	if(is(typeof(low): ElementType!Stream) && is(typeof(high) : ElementType!Stream)){
 		static struct Parser {
 			ElementType!Stream value;
+			typeof(Stream.init.context) context;
 
 			static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
 			
 			bool parse(ref Stream stream) {
 				if(stream.empty) return false;
 				auto v = stream.front;
-				if(v >= low && v < high) {
+				
+				if(v >= low && v <= high) {
 					stream.popFront();
 					value = v;
 					return true;
 				}
-				else
+				else {
+					context = stream.context;
 					return false;
+				}
+			}
+
+			auto error(){
+				return Stream.Error(context, msg);
 			}
 		}
+		return Parser();
 	}
 
 	interface Dynamic(V) {
 		@property ref V value();
 		bool parse(ref Stream stream);
-		Stream.Error error(ref Stream stream);
+		Stream.Error error();
 	}
 
 	auto dynamic(Parser)(Parser parser)
@@ -68,7 +80,7 @@ template parsers(Stream)
 
 			override bool parse(ref Stream stream){ return p.parse(stream); }
 
-			override Stream.Error error(ref Stream stream){ return p.error(stream); }
+			override Stream.Error error(){ return p.error; }
 
 			this(Parser p){
 				this.p = p;
