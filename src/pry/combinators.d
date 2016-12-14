@@ -174,7 +174,10 @@ if(allSatisfy!(isParser, P)) {
 	alias Values = NoDuplicates!(staticMap!(ParserValue, P));
 	static struct Parser {
 		private P parsers;
-		Algebraic!Values value;
+		static if(Values.length == 1)
+			Values[0] value;
+		else
+			Algebraic!Values value;
 
 		bool parse(ref Stream stream) {
 			foreach(i, p; parsers) {
