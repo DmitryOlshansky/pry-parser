@@ -80,7 +80,23 @@ template parsers(Stream)
 		Stream.Error error();
 	}
 
-	auto dynamic(Parser)(Parser parser)
+	auto dynamic(V)(){
+		static class Dynamic {
+			DynamicParser!V wrapped;
+		final:
+			void opAssign(P)(P parser){
+				wrapped = wrap(parser);
+			}
+			ref V value(){ return wrapped.value; }
+
+			bool parse(ref Stream stream){ return wrapped.parse(stream); }
+
+			Stream.Error error(){ return wrapped.error; }
+		}
+		return new Dynamic();
+	}
+
+	auto wrap(Parser)(Parser parser)
 	if(isParser!Parser){
 		alias V = ParserValue!Parser;
 		static class Wrapped : DynamicParser!V {
@@ -105,9 +121,9 @@ unittest
 	alias S = SimpleStream!string;
 	with(parsers!S)
 	{
-		Dynamic!dchar parser;
+		auto parser = dynamic!dchar;
 		pragma(msg, ParserStream!(Dynamic!char));
-		parser = dynamic(tk!'a');
+		parser = tk!'a';
 		S s = S("a");
 		assert(parser.parse(s));
 		assert(parser.value == 'a');
