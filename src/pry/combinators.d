@@ -193,7 +193,7 @@ if(allSatisfy!(isParser, P)) {
 			return parsers[$-1].error();
 		}
 	}
-	return Parser();
+	return Parser(parsers);
 }
 
 ///
@@ -210,5 +210,17 @@ unittest {
 		assert(parser.parse(s));
 		assert(parser.value == cast(dchar)'a');
 		assert(s.empty);
+	}
+}
+
+unittest {
+	import pry.atoms, pry.stream;
+	import std.range.primitives;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto e = dynamic!int;
+		e = any(seq(tk!'0', e).map!(x => 1), tk!'1'.map!(x => 0));
+		S s = S("0001");
+		assert(e.parse(s));
 	}
 }

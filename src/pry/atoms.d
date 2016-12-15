@@ -64,45 +64,40 @@ template parsers(Stream)
 		return Parser();
 	}
 
-	struct Dynamic(V) {
-		private DynamicParser!V parser;
-		void opAssign(DynamicParser!V dyn){
-			parser = dyn;
-		}
-		@property ref V value(){ return parser.value; }
-		bool parse(ref Stream stream){ return parser.parse(stream); }
-		Stream.Error error(){ return parser.error; }
-	}
-
 	interface DynamicParser(V) {
 		@property ref V value();
 		bool parse(ref Stream stream);
 		Stream.Error error();
 	}
 
+	
+
 	auto dynamic(V)(){
 		static class Dynamic {
 			DynamicParser!V wrapped;
 		final:
-			void opAssign(P)(P parser){
+			void opAssign(P)(P parser)
+			if(isParser!P && !is(P : Dynamic)){
 				wrapped = wrap(parser);
 			}
-			ref V value(){ return wrapped.value; }
+			@property ref V value(){ return wrapped.value; }
 
-			bool parse(ref Stream stream){ return wrapped.parse(stream); }
+			bool parse(ref Stream stream){ 
+				return wrapped.parse(stream); 
+			}
 
 			Stream.Error error(){ return wrapped.error; }
-		}
+		}	
 		return new Dynamic();
 	}
 
 	auto wrap(Parser)(Parser parser)
 	if(isParser!Parser){
 		alias V = ParserValue!Parser;
-		static class Wrapped : DynamicParser!V {
+		static class Wrapped: DynamicParser!V {
 			Parser p;
 			
-			override ref V value(){ return p.value; }
+			@property override ref V value(){ return p.value; }
 
 			override bool parse(ref Stream stream){ return p.parse(stream); }
 
@@ -111,7 +106,7 @@ template parsers(Stream)
 			this(Parser p){
 				this.p = p;
 			}
-		}
+		}		
 		return new Wrapped(parser);
 	}
 }
@@ -122,7 +117,6 @@ unittest
 	with(parsers!S)
 	{
 		auto parser = dynamic!dchar;
-		pragma(msg, ParserStream!(Dynamic!char));
 		parser = tk!'a';
 		S s = S("a");
 		assert(parser.parse(s));
