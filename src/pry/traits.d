@@ -24,7 +24,12 @@ enum isParser(Parser) = is(typeof((){
 }));
 
 /// Extract value type of a given Parser.
-alias ParserValue(Parser) = typeof(Parser.init.value);
+template ParserValue(Parser){
+	static if(isCallable!(typeof(Parser.value)))
+	 	alias ParserValue = typeof(Parser.value());
+	else
+		alias ParserValue = typeof(Parser.value);
+}
 
 /// Extract stream type of a given Parser.
 alias ParserStream(Parser) = Parameters!(Parser.parse)[0];
