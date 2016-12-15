@@ -41,3 +41,10 @@ public:
 }
 
 static assert(isStream!(SimpleStream!string));
+
+/// Wrap a given slicable random access range into a SimpleStream. 
+auto stream(Range)(Range range) 
+if(isRandomAccessRange!Range || isSomeString!Range) {
+	return SimpleStream!Range(range);
+}
+

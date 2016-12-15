@@ -64,7 +64,17 @@ template parsers(Stream)
 		return Parser();
 	}
 
-	interface Dynamic(V) {
+	struct Dynamic(V) {
+		private DynamicParser!V parser;
+		void opAssign(DynamicParser!V dyn){
+			parser = dyn;
+		}
+		@property ref V value(){ return parser.value; }
+		bool parse(ref Stream stream){ return parser.parse(stream); }
+		Stream.Error error(){ return parser.error; }
+	}
+
+	interface DynamicParser(V) {
 		@property ref V value();
 		bool parse(ref Stream stream);
 		Stream.Error error();
@@ -73,7 +83,7 @@ template parsers(Stream)
 	auto dynamic(Parser)(Parser parser)
 	if(isParser!Parser){
 		alias V = ParserValue!Parser;
-		static class Wrapped : Dynamic!V {
+		static class Wrapped : DynamicParser!V {
 			Parser p;
 			
 			override ref V value(){ return p.value; }
