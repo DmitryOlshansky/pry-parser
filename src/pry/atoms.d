@@ -70,8 +70,6 @@ template parsers(Stream)
 		Stream.Error error();
 	}
 
-	
-
 	auto dynamic(V)(){
 		static class Dynamic {
 			DynamicParser!V wrapped;
