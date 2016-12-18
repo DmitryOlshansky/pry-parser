@@ -15,7 +15,10 @@ template parsers(Stream)
 			static immutable msg = "expected '" ~ to!string(c) ~ "'";
 
 			bool parse(ref Stream stream) {
-				if(stream.empty) return false;
+				if(stream.empty) {
+					context = stream.context;
+					return false;
+				}
 				if(stream.front == value){
 					stream.popFront();
 					return true;
@@ -43,9 +46,11 @@ template parsers(Stream)
 			static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
 			
 			bool parse(ref Stream stream) {
-				if(stream.empty) return false;
+				if(stream.empty) {
+					context = stream.context;
+					return false;
+				}
 				auto v = stream.front;
-				
 				if(v >= low && v <= high) {
 					stream.popFront();
 					value = v;

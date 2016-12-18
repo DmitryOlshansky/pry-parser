@@ -21,7 +21,7 @@ auto makeParser(){
 		);
 		expr = any(
 			seq(term, tk!'+', expr).map!(x => x[0] + x[2]),
-			seq(term, tk!'-', expr).map!(x => x[0] + x[2]),
+			seq(term, tk!'-', expr).map!(x => x[0] - x[2]),
 			term
 		);
 		return expr;

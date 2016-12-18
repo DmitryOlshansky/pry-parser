@@ -121,28 +121,19 @@ if(allSatisfy!(isParser, P)) {
 	static struct Parser {
 		private P parsers;
 		Tuple!Values value;
-		private size_t errorIndex;
+		Stream.Error error;
 
 		bool parse(ref Stream stream) {
 			auto save = stream.mark;
 			foreach(i, ref p; parsers) {
 				if(!p.parse(stream)){
-					errorIndex = i;
+					error = p.error;
 					stream.restore(save);
 					return false;
 				}
 				value[i] = p.value;
 			}
 			return true;
-		}
-
-		Stream.Error error() {
-			foreach(i, ref p; parsers) {
-				if(i == errorIndex){
-					return p.error;
-				}
-			}
-			assert(false);
 		}
 	}
 	return Parser(parsers);
@@ -178,20 +169,27 @@ if(allSatisfy!(isParser, P)) {
 			Values[0] value;
 		else
 			Algebraic!Values value;
+		Stream.Error error;
 
 		bool parse(ref Stream stream) {
-			foreach(i, p; parsers) {
+			foreach(i, ref p; parsers) {
 				if(p.parse(stream)){
 					value = p.value;
 					return true;
+				}
+				static if(i == 0) {
+					error = p.error;
+				}
+				else{
+					auto e = p.error;
+					if(e.context > error.context){
+						error = e;
+					}
 				}
 			}
 			return false;
 		}
 
-		Stream.Error error() {
-			return parsers[$-1].error();
-		}
 	}
 	return Parser(parsers);
 }
@@ -215,12 +213,25 @@ unittest {
 
 unittest {
 	import pry.atoms, pry.stream;
-	import std.range.primitives;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
 		auto e = dynamic!int;
 		e = any(seq(tk!'0', e).map!(x => 1), tk!'1'.map!(x => 0));
 		S s = S("0001");
 		assert(e.parse(s));
+	}
+}
+
+unittest {
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = any(
+			seq(tk!'0', tk!'0'),
+			seq(tk!'1', tk!'1')
+		);
+		S s = "01".stream;
+		assert(!p.parse(s));
+		assert(p.error.context == 1);
 	}
 }
