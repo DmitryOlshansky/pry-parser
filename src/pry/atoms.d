@@ -6,110 +6,84 @@ import std.conv, std.range.primitives;
 template parsers(Stream)
 {
 	// Single element token.
-	auto tk(alias c)()
+	auto tk(alias c)
+	(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err)
 	if(is(typeof(c) : ElementType!Stream)) {
-		static struct Parser {
-			ElementType!Stream value = c;
-			typeof(Stream.init.context) context;
-
-			static immutable msg = "expected '" ~ to!string(c) ~ "'";
-
-			bool parse(ref Stream stream) {
-				if(stream.empty) {
-					context = stream.context;
-					return false;
-				}
-				if(stream.front == value){
-					stream.popFront();
-					return true;
-				}
-				else {
-					context = stream.context;
-					return false;
-				}
-			}
-
-			auto error(){
-				return Stream.Error(context, msg);
-			}
+		static immutable msg = "expected '" ~ to!string(c)~"'";
+		if(stream.empty) {
+			err.location = stream.location;
+			err.reason = "unexpected end of stream";
+			return false;
 		}
-		return Parser();
+		if(stream.front == c){
+			value = c;
+			stream.popFront();
+			return true;
+		}
+		else {
+			err.location = stream.location;
+			err.reason = msg;
+			return false;
+		}
 	}
 
 	// In a range of elements.
-	auto range(alias low, alias high)()
+	auto range(alias low, alias high)
+	(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err)
 	if(is(typeof(low): ElementType!Stream) && is(typeof(high) : ElementType!Stream)){
-		static struct Parser {
-			ElementType!Stream value;
-			typeof(Stream.init.context) context;
-
-			static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
-			
-			bool parse(ref Stream stream) {
-				if(stream.empty) {
-					context = stream.context;
-					return false;
-				}
-				auto v = stream.front;
-				if(v >= low && v <= high) {
-					stream.popFront();
-					value = v;
-					return true;
-				}
-				else {
-					context = stream.context;
-					return false;
-				}
-			}
-
-			auto error(){
-				return Stream.Error(context, msg);
-			}
+		static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
+		if(stream.empty) {
+			err.location = stream.location;
+			err.reason = "unexpected end of stream";
+			return false;
 		}
-		return Parser();
+		auto v = stream.front;
+		if(v >= low && v <= high) {
+			value = v;
+			stream.popFront();
+			return true;
+		}
+		else {
+			err.location = stream.location;
+			err.reason = msg;
+			return false;
+		}
 	}
 
 	interface DynamicParser(V) {
-		@property ref V value();
-		bool parse(ref Stream stream);
-		Stream.Error error();
+		bool opCall(ref Stream stream, ref V value, ref Stream.Error err);
 	}
 
 	auto dynamic(V)(){
-		static class Dynamic {
+		static class Dynamic : DynamicParser!V {
 			DynamicParser!V wrapped;
 		final:
 			void opAssign(P)(P parser)
-			if(isParser!P && !is(P : Dynamic)){
+			if(isParser!parser && !is(P : Dynamic)){
 				wrapped = wrap(parser);
 			}
-			@property ref V value(){ return wrapped.value; }
-
-			bool parse(ref Stream stream){ 
-				return wrapped.parse(stream); 
+	
+			bool opCall(ref Stream stream, ref V value, ref Stream.Error err){
+				return wrapped(stream, value, err); 
 			}
-
-			Stream.Error error(){ return wrapped.error; }
 		}	
 		return new Dynamic();
 	}
 
 	auto wrap(Parser)(Parser parser)
-	if(isParser!Parser){
-		alias V = ParserValue!Parser;
+	if(isParser!parser){
+		alias V = ParserValue!parser;
 		static class Wrapped: DynamicParser!V {
 			Parser p;
 			
-			@property override ref V value(){ return p.value; }
-
-			override bool parse(ref Stream stream){ return p.parse(stream); }
-
-			override Stream.Error error(){ return p.error; }
-
 			this(Parser p){
 				this.p = p;
 			}
-		}		
+
+			bool opCall(ref Stream stream, ref V value, ref Stream.Error err){
+				return p(stream, value, err); 
+			}
+		}
 		return new Wrapped(parser);
 	}
 }
@@ -119,11 +93,14 @@ unittest
 	alias S = SimpleStream!string;
 	with(parsers!S)
 	{
+		static assert(isParser!(tk!'a'));
 		auto parser = dynamic!dchar;
-		parser = tk!'a';
+		parser = &tk!'a';
 		S s = S("a");
-		assert(parser.parse(s));
-		assert(parser.value == 'a');
+		dchar c;
+		S.Error e;
+		assert(parser(s, c, e));
+		assert(c == 'a');
 		assert(s.empty);
 	}
 }

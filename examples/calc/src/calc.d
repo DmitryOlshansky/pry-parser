@@ -9,19 +9,19 @@ alias S = SimpleStream!string;
 auto makeParser(){
 	with(parsers!S) {
 		auto expr = dynamic!int;
-		auto primary = any(
-			range!('0', '9').rep.map!(x => x.to!int),
-			seq(tk!'(', expr, tk!')').map!(x => x[1])
+		alias primary = any!(
+			map!(rep!(range!('0', '9')), x => x.to!int),
+			map!(seq!(tk!'(', expr, tk!')'), x => x[1])
 		);
 		auto term = dynamic!int;
-		term = any(
-			seq(primary, tk!'*', term).map!(x => x[0] * x[2]),
-			seq(primary, tk!'/', term).map!(x => x[0] / x[2]),
+		term = &any!(
+			map!(seq!(primary, tk!'*', term), x => x[0] * x[2]),
+			map!(seq!(primary, tk!'/', term), x => x[0] / x[2]),
 			primary
 		);
-		expr = any(
-			seq(term, tk!'+', expr).map!(x => x[0] + x[2]),
-			seq(term, tk!'-', expr).map!(x => x[0] - x[2]),
+		expr = &any!(
+			map!(seq!(term, tk!'+', expr), x => x[0] + x[2]),
+			map!(seq!(term, tk!'-', expr), x => x[0] - x[2]),
 			term
 		);
 		return expr;
@@ -32,15 +32,17 @@ void main(){
 	auto parser = makeParser();
 	while(!stdin.eof){
 		string s = readln();
+		int value;
+		S.Error err;
 		auto stream = S(s[0..$-1]); // chomp '\n'
-		bool success = parser.parse(stream);
+		bool success = parser(stream, value, err);
 		if(success && stream.empty){
-			writeln("=", parser.value);
+			writeln("=", value);
 		}
 		else if(success && !stream.empty){
-			writeln("Failed to parse, the leftover is : ", s[stream.context..$-1]);
+			writeln("Failed to parse, the leftover is : ", s[stream.location..$-1]);
 		} else {
-			writeln("Error at ", parser.error.context," ", parser.error.reason);
+			writeln("Error at ", err.location, " ", err.reason);
 		}
 	}
 }

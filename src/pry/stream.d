@@ -11,7 +11,7 @@ private:
 public:
 	alias Range = S;
 	static struct Error {
-		size_t context;
+		size_t location;
 		string reason;
 	} 
 
@@ -35,7 +35,7 @@ public:
 
 	void restore(size_t i){ _index = i; }
 
-	@property size_t context() {
+	@property size_t location() {
 		return _index;
 	}
 }
