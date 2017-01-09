@@ -204,17 +204,6 @@ if(allSatisfy!(isParser, P)){
 	return Any!P(parsers);
 }
 
-
-auto fn(Parser)(Parser parser){
-	alias Stream = ParserStream!Parser;
-	alias Value = ParserValue!Parser;
-	Stream stream;
-	Value value;
-	Parser parser;
-	Stream.Error error;
-	bool r = parser.parse(stream, value, error);
-}
-
 ///
 unittest {
 	import pry.atoms, pry.stream;
