@@ -3,24 +3,25 @@ module pry.combinators;
 import pry.traits;
 import std.meta;
 
-template repImpl(bool collect, size_t minTimes, alias parser){
-	alias Stream = ParserStream!parser;
+struct RepImpl(bool collect, size_t minTimes, Parser){
+	alias Stream = ParserStream!Parser;
 	static if(collect)
-		alias Value = ParserValue!parser[];
+		alias Value = ParserValue!Parser[];
 	else
 		alias Value = Stream.Range;
+	Parser parser;
 
-	bool repImpl(ref Stream stream, ref Value value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
 		auto start = stream.mark;
-		ParserValue!parser tmp;
+		ParserValue!Parser tmp;
 		for(size_t i = 0; i<minTimes; i++) {
-			if(!parser(stream, tmp, err)){
+			if(!parser.parse(stream, tmp, err)){
 				stream.restore(start);
 				return false;
 			}
 			static if(collect) value ~= tmp;
 		}
-		while(parser(stream, tmp, err)){
+		while(parser.parse(stream, tmp, err)){
 			static if(collect) value ~= tmp;
 		}
 		static if(!collect)
@@ -31,10 +32,16 @@ template repImpl(bool collect, size_t minTimes, alias parser){
 
 
 /// Apply parser for minTimes times or more and return consumed range.
-alias rep(alias parser, size_t minTimes=1) = repImpl!(false, minTimes, parser);
+auto rep(size_t minTimes=1, Parser)(Parser parser)
+if(isParser!Parser){
+	return RepImpl!(false, minTimes, Parser)(parser);
+}
 
 /// Apply parser for minTimes times or more and return array of results.
-alias array(alias parser, size_t minTimes=1) = repImpl!(true, minTimes, parser);
+auto array(size_t minTimes=1, Parser)(Parser parser)
+if(isParser!Parser){
+	return RepImpl!(true, minTimes, Parser)(parser);
+}
 
 unittest
 {
@@ -42,40 +49,50 @@ unittest
 	alias S = SimpleStream!string;
 	with(parsers!S)
 	{
-		alias p = rep!(tk!'a', 2);
+		auto p = tk!'a'.rep!2;
 		string r;
 		S.Error err;
 		auto s = S("aaac");
-		assert(p(s, r, err));
+		assert(p.parse(s, r, err));
 		assert(r == "aaa");
 		
 		s = S("a");
-		assert(!p(s, r, err));
+		assert(!p.parse(s, r, err));
 		assert(err.location == 1);
 		assert(err.reason == "unexpected end of stream");
 		
-		alias p2 = array!(range!('a', 'b'));
+		auto p2 = range!('a', 'b').array;
 		dchar[] r2;
 		s = S("aba");
-		assert(p2(s, r2, err));
+		assert(p2.parse(s, r2, err));
 		assert(r2 == "aba"d);
 		assert(s.empty);
 	}
 }
 
-/// Apply a mapping function to the value of parser.
-template map(alias parser, alias f)
-/*if(isParser!parser)*/ {
-	alias Stream = ParserStream!parser;
-	alias Value = typeof(f(ParserValue!parser.init));
-	bool map(ref Stream stream, ref Value value, ref Stream.Error err){
-		ParserValue!parser tmp;
-		if(parser(stream, tmp, err)){
+
+struct Map(Parser, alias f) {
+	alias Stream = ParserStream!Parser;
+	alias Value = typeof(f(ParserValue!Parser.init));
+	alias mapper = f;
+	Parser parser;
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err){
+		ParserValue!Parser tmp;
+		if(parser.parse(stream, tmp, err)){
 			value = f(tmp);
 			return true;
 		}
 		else
 			return false;
+	}
+}
+
+/// Apply a mapping function to the value of parser.
+template map(alias f)
+{
+	auto map(Parser)(Parser parser)
+	if(isParser!Parser){
+		return Map!(Parser, f)(parser);
 	}
 }
 
@@ -85,30 +102,31 @@ unittest {
 	import pry.atoms, pry.stream;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
-		alias digits = map!(rep!(range!('0', '9')), x=>x.to!int);
+		auto digits = range!('0', '9').rep.map!(x=>x.to!int);
+		alias f = digits.mapper;
 		S s = S("90");
 		int r;
 		S.Error err;
-		assert(digits(s, r, err));
+		assert(digits.parse(s, r, err));
 		assert(r == 90);
 		s = S("a");
-		assert(!digits(s, r, err));
+		assert(!digits.parse(s, r, err));
 		assert(err.location == 0);
 	}
 }
 
 
-/// Apply multiple parsers one after another as a sequence.
-template seq(P...)
-/*if(allSatisfy!(isParser, P)) */{
+
+struct Seq(P...){
 	import std.typecons;
 	alias Stream = ParserStream!(P[0]);
 	alias Values = staticMap!(ParserValue, P);
+	P parsers;
 	
-	bool seq(ref Stream stream, ref Tuple!Values value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Tuple!Values value, ref Stream.Error err) {
 		auto save = stream.mark;
-		foreach(i, p; P) {
-			if(!p(stream, value[i], err)){
+		foreach(i, ref p; parsers) {
+			if(!p.parse(stream, value[i], err)){
 				stream.restore(save);
 				return false;
 			}
@@ -117,30 +135,34 @@ template seq(P...)
 	}
 }
 
+/// Apply multiple parsers one after another as a sequence.
+auto seq(P...)(P parsers)
+if(allSatisfy!(isParser, P)){
+	return Seq!P(parsers);
+}
+
 ///
 unittest {
 	import pry.atoms, pry.stream;
 	import std.range.primitives, std.typecons;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
-		alias elements = seq!(tk!'a', range!('a', 'd'), tk!'c');
+		auto elements = seq(tk!'a', range!('a', 'd'), tk!'c');
 		S s = S("abc");
 		Tuple!(dchar, dchar, dchar) val;
 		S.Error err;
-		assert(elements(s, val, err));
+		assert(elements.parse(s, val, err));
 		assert(s.empty);
 		assert(val == tuple('a', 'b', 'c'));
 		s = S("axc");
-		assert(!elements(s, val, err));
+		assert(!elements.parse(s, val, err));
 		assert(s.front == 'a');
 		assert(err.location == 1);
 	}
 }
 
 
-/// Try each of provided parsers until one succeeds.
-template any(P...)
-/*if(allSatisfy!(isParser, P)) */{
+struct Any(P...){
 	import std.variant;
 	alias Stream = ParserStream!(P[0]);
 	alias Values = NoDuplicates!(staticMap!(ParserValue, P));
@@ -149,20 +171,20 @@ template any(P...)
 		alias Value = Values[0];
 	else
 		alias Value = Algebraic!Values;
-	Stream.Error error;
+	P parsers;
 
-	bool any(ref Stream stream, ref Value value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
 		Stream.Error current;
-		foreach(i, p; P) {
-			ParserValue!p tmp;
+		foreach(i, ref p; parsers) {
+			ParserValue!(P[i]) tmp;
 			static if(i == 0){
-				if(p(stream, tmp, err)){
+				if(p.parse(stream, tmp, err)){
 					value = tmp;
 					return true;
 				}
 			}
 			else {
-				if(p(stream, tmp, current)){
+				if(p.parse(stream, tmp, current)){
 					value = tmp;
 					return true;
 				}
@@ -176,20 +198,38 @@ template any(P...)
 	}
 }
 
+/// Try each of provided parsers until one succeeds.
+auto any(P...)(P parsers)
+if(allSatisfy!(isParser, P)){
+	return Any!P(parsers);
+}
+
+
+auto fn(Parser)(Parser parser){
+	alias Stream = ParserStream!Parser;
+	alias Value = ParserValue!Parser;
+	Stream stream;
+	Value value;
+	Parser parser;
+	Stream.Error error;
+	bool r = parser.parse(stream, value, error);
+}
+
 ///
 unittest {
 	import pry.atoms, pry.stream;
 	import std.range.primitives, std.conv, std.variant;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
-		alias digits = map!(rep!(range!('0', '9')), x => x.to!int);
-		alias parser = any!(tk!'a', digits);
+		auto digits = range!('0', '9').rep.map!(x => x.to!int);
+		static assert(isParser!(typeof(digits)));
+		auto parser = any(tk!'a', digits);
 		S s = "10a";
 		S.Error err;
 		Algebraic!(dchar, int) value;
-		assert(parser(s, value, err));
+		assert(parser.parse(s, value, err));
 		assert(value == 10);
-		assert(parser(s, value, err));
+		assert(parser.parse(s, value, err));
 		assert(value == cast(dchar)'a');
 		assert(s.empty);
 	}
@@ -200,14 +240,14 @@ unittest {
 	alias S = SimpleStream!string;
 	with(parsers!S) {
 		auto e = dynamic!int;
-		e = &any!(
-			map!(seq!(tk!'0', e), x => 1),
-			map!(tk!'1', x => 0)
+		e = any(
+			seq(tk!'0', e).map!(x => 1),
+			tk!'1'.map!(x => 0)
 		);
 		S.Error err;
 		int val;
 		S s = S("0001");
-		assert(e(s, val, err));
+		assert(e.parse(s, val, err));
 	}
 }
 
@@ -216,14 +256,15 @@ unittest {
 	import std.typecons;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
-		alias p = any!(
-			seq!(tk!'0', tk!'0'),
-			seq!(tk!'1', tk!'1')
+		auto p = any(
+			seq(tk!'0', tk!'0'),
+			seq(tk!'1', tk!'1')
 		);
 		S s = "01".stream;
 		Tuple!(dchar, dchar) value;
 		S.Error err;
-		assert(!p(s, value, err));
+		assert(!p.parse(s, value, err));
 		assert(err.location == 1);
 	}
 }
+

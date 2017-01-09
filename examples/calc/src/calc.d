@@ -9,19 +9,19 @@ alias S = SimpleStream!string;
 auto makeParser(){
 	with(parsers!S) {
 		auto expr = dynamic!int;
-		alias primary = any!(
-			map!(rep!(range!('0', '9')), x => x.to!int),
-			map!(seq!(tk!'(', expr, tk!')'), x => x[1])
+		auto primary = any(
+			range!('0', '9').rep.map!(x => x.to!int),
+			seq(tk!'(', expr, tk!')').map!(x => x[1])
 		);
 		auto term = dynamic!int;
-		term = &any!(
-			map!(seq!(primary, tk!'*', term), x => x[0] * x[2]),
-			map!(seq!(primary, tk!'/', term), x => x[0] / x[2]),
+		term = any(
+			seq(primary, tk!'*', term).map!(x => x[0] * x[2]),
+			seq(primary, tk!'/', term).map!(x => x[0] / x[2]),
 			primary
 		);
-		expr = &any!(
-			map!(seq!(term, tk!'+', expr), x => x[0] + x[2]),
-			map!(seq!(term, tk!'-', expr), x => x[0] - x[2]),
+		expr = any(
+			seq(term, tk!'+', expr).map!(x => x[0] + x[2]),
+			seq(term, tk!'-', expr).map!(x => x[0] - x[2]),
 			term
 		);
 		return expr;
@@ -30,12 +30,13 @@ auto makeParser(){
 
 void main(){
 	auto parser = makeParser();
-	while(!stdin.eof){
+	for(;;){
 		string s = readln();
 		int value;
 		S.Error err;
+		if(s == null) break;
 		auto stream = S(s[0..$-1]); // chomp '\n'
-		bool success = parser(stream, value, err);
+		bool success = parser.parse(stream, value, err);
 		if(success && stream.empty){
 			writeln("=", value);
 		}
