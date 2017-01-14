@@ -3,6 +3,8 @@ module pry.combinators;
 import pry.traits;
 import std.meta;
 
+private:
+
 struct RepImpl(bool collect, size_t minTimes, Parser){
 	alias Stream = ParserStream!Parser;
 	static if(collect)
@@ -32,13 +34,13 @@ struct RepImpl(bool collect, size_t minTimes, Parser){
 
 
 /// Apply parser for minTimes times or more and return consumed range.
-auto rep(size_t minTimes=1, Parser)(Parser parser)
+public auto rep(size_t minTimes=1, Parser)(Parser parser)
 if(isParser!Parser){
 	return RepImpl!(false, minTimes, Parser)(parser);
 }
 
 /// Apply parser for minTimes times or more and return array of results.
-auto array(size_t minTimes=1, Parser)(Parser parser)
+public auto array(size_t minTimes=1, Parser)(Parser parser)
 if(isParser!Parser){
 	return RepImpl!(true, minTimes, Parser)(parser);
 }
@@ -76,6 +78,7 @@ struct Map(Parser, alias f) {
 	alias Value = typeof(f(ParserValue!Parser.init));
 	alias mapper = f;
 	Parser parser;
+
 	bool parse(ref Stream stream, ref Value value, ref Stream.Error err){
 		ParserValue!Parser tmp;
 		if(parser.parse(stream, tmp, err)){
@@ -88,7 +91,7 @@ struct Map(Parser, alias f) {
 }
 
 /// Apply a mapping function to the value of parser.
-template map(alias f)
+public template map(alias f)
 {
 	auto map(Parser)(Parser parser)
 	if(isParser!Parser){
@@ -103,7 +106,6 @@ unittest {
 	alias S = SimpleStream!string;
 	with(parsers!S) {
 		auto digits = range!('0', '9').rep.map!(x=>x.to!int);
-		alias f = digits.mapper;
 		S s = S("90");
 		int r;
 		S.Error err;
@@ -136,9 +138,12 @@ struct Seq(P...){
 }
 
 /// Apply multiple parsers one after another as a sequence.
-auto seq(P...)(P parsers)
+public auto seq(P...)(P parsers)
 if(allSatisfy!(isParser, P)){
-	return Seq!P(parsers);
+	static if(P.length == 0)
+		return Nothing();
+	else
+		return Seq!P(parsers);
 }
 
 ///
@@ -161,9 +166,153 @@ unittest {
 	}
 }
 
+struct Nothing{}
+
+struct TList(T...){}
+
+template commonPrefixLength(T1, T2){
+	static if(is(T1 == TList!U1, U1...)){
+		static if(is(T2 == TList!U2, U2...)){
+			static if(U1.length == 0 || U2.length == 0){
+				enum commonPrefixLength = 0;
+			}
+			else static if(is(U1[0] == U2[0])){
+				enum commonPrefixLength = 1 +
+					commonPrefixLength!(TList!(U1[1..$]), TList!(U2[1..$]));
+			}
+			else {
+				enum commonPrefixLength = 0;
+			}
+		}
+	}
+}
+
+auto commonPrefix(P1, P2)(P1 p1, P2 p2){
+	static if(is(P1 : Seq!U1, U1...)){
+		enum isSeq = true;
+		alias T1 = TList!U1;
+	}
+	else{
+		enum isSeq = false;
+		alias T1 = TList!P1;
+	}
+	static if(is(P2 : Seq!U2, U2...)){
+		alias T2 = TList!U2;
+	}
+	else{
+		alias T2 = TList!P2;
+	}
+	enum len = commonPrefixLength!(T1,T2);
+	static if(isSeq)
+		return seq(p1.parsers[0..len]);
+	else static if(len)
+		return seq(p1);
+	else
+		return Nothing();
+}
+
+auto commonPrefix(P...)(P p)
+if(P.length > 2){
+	return commonPrefix(commonPrefix(p[0], p[1]), p[2..$]);
+}
+
+unittest {
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p1 = seq(tk!'a', tk!'b');
+		auto p2 = seq(tk!'a');
+		auto p3 = tk!'a';
+		auto p4 = seq(tk!'b', tk!'a');
+		assert(commonPrefix(p1, p2) == seq(tk!'a'));
+		assert(commonPrefix(p2, p3) == seq(tk!'a'));
+		assert(commonPrefix(p3, p3) == seq(tk!'a'));
+		assert(commonPrefix(p3, p1) == seq(tk!'a'));
+		assert(commonPrefix(p1, p4) == Nothing());
+		assert(commonPrefix(p3, p4) == Nothing());
+		assert(commonPrefix(p4, p3) == Nothing());
+		assert(commonPrefix(p1, p2, p3) == seq(tk!'a'));
+		assert(commonPrefix(p1, p2, p3, p4) == Nothing());
+	}
+}
+
+auto suffix(P1, P2)(P1 prefix, P2 parser)
+if(isParser!P1 && isParser!P2){
+	static if(is(P1 : Seq!U1, U1...)){
+		alias T1 = TList!U1;
+	}
+	else{
+		alias T1 = TList!P1;
+	}
+	static if(is(P2 : Seq!U2, U2...)){
+		enum isSeq = true;
+		alias T2 = TList!U2;
+	}
+	else{
+		enum isSeq = false;
+		alias T2 = TList!P2;
+	}
+	enum len = commonPrefixLength!(T1,T2);
+	static if(is(T1 : TList!U, U...)){
+		static assert(len == U.length);
+	}
+	static if(isSeq){
+		return seq(parser.parsers[len..$]);
+	}
+	else{
+		static if(len > 0)
+			return Nothing();
+		else
+			return seq(parser);
+	}
+}
+
+unittest{
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p1 = seq(tk!'a', tk!'b');
+		auto p2 = seq(tk!'a');
+		auto p3 = tk!'a';
+		auto p4 = seq(tk!'b', tk!'a');
+		assert(suffix(p2, p1) == seq(tk!'b'));
+		assert(suffix(p3, p1) == seq(tk!'b'));
+		assert(suffix(p2, p3) == Nothing());
+	}
+}
+
+template Unmap(P){
+	static if(is(P : Map!(U, f), alias f, U)){
+		alias Unmap = U;
+	}
+	else {
+		alias Unmap = P;
+	}
+}
+
+auto unmap(P)(P parser){
+	static if(is(P : Map!(U, f), alias f, U)){
+		return parser.parser;
+	}
+	else {
+		return parser;
+	}
+}
+
+unittest{
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto x = tk!'a'.map!(x => 1);
+		alias mapped = ExtractMap!(typeof(x));
+		assert(mapped(0) == 1);
+		assert(unmap(x) == tk!'a');
+		assert(unmap(unmap(x)) == tk!'a');
+	}
+}
 
 struct Any(P...){
-	import std.variant;
+	import std.variant, std.typecons;
 	alias Stream = ParserStream!(P[0]);
 	alias Values = NoDuplicates!(staticMap!(ParserValue, P));
 
@@ -171,26 +320,78 @@ struct Any(P...){
 		alias Value = Values[0];
 	else
 		alias Value = Algebraic!Values;
+	
 	P parsers;
+	alias Prefix = typeof(extractPrefix());
+	Prefix prefix;
+
+	template mapper(size_t i){
+		static if(is(P[i] == Map!(U, f), U, alias f))
+			alias mapper = P[i].mapper;
+		else
+			alias mapper = x => x;
+	}
+
+	this(P parsers){
+		this.parsers = parsers;
+		prefix = extractPrefix();
+	}
+
+	auto extractPrefix(){
+		staticMap!(Unmap, P) unmapped = void;
+		foreach(i, ref p; parsers){
+			unmapped[i] = unmap(p);
+		}
+		return commonPrefix(unmapped);
+	}
+
+	auto combine(T1, T2)(T1 prefixValue, T2 suffixValue){
+		static if(is(T1 == Nothing)){
+			return suffixValue;
+		}
+		else{
+			return tuple(prefixValue.expand, suffixValue.expand);
+		}
+	}
 
 	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
+		static if(is(Prefix == Nothing)){
+			Nothing prefixValue;
+		}
+		else{
+			ParserValue!Prefix prefixValue;
+			if(!prefix.parse(stream, prefixValue, err)){
+				return false;
+			}
+		}
 		Stream.Error current;
 		foreach(i, ref p; parsers) {
-			ParserValue!(P[i]) tmp;
-			static if(i == 0){
-				if(p.parse(stream, tmp, err)){
-					value = tmp;
-					return true;
-				}
+			static if(is(Prefix == Nothing))
+				auto sp = unmap(p);
+			else
+				auto sp = suffix(prefix, unmap(p));
+			alias Suffix = typeof(sp);
+			static if(is(Suffix == Nothing)){
+				value = mapper!i(prefixValue.expand);
+				return true;
 			}
 			else {
-				if(p.parse(stream, tmp, current)){
-					value = tmp;
-					return true;
+				ParserValue!Suffix suffixValue;
+				static if(i == 0){
+					if(sp.parse(stream, suffixValue, err)){
+						value = mapper!i(combine(prefixValue, suffixValue));
+						return true;
+					}
 				}
-				// pick the deeper error
-				if(err.location < current.location){
-					err = current;
+				else {
+					if(sp.parse(stream, suffixValue, current)){
+						value = mapper!i(combine(prefixValue, suffixValue));
+						return true;
+					}
+					// pick the deeper error
+					if(err.location < current.location){
+						err = current;
+					}
 				}
 			}
 		}
@@ -199,7 +400,7 @@ struct Any(P...){
 }
 
 /// Try each of provided parsers until one succeeds.
-auto any(P...)(P parsers)
+public auto any(P...)(P parsers)
 if(allSatisfy!(isParser, P)){
 	return Any!P(parsers);
 }
@@ -256,4 +457,3 @@ unittest {
 		assert(err.location == 1);
 	}
 }
-
