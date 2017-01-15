@@ -362,7 +362,7 @@ struct Any(P...){
 				return false;
 			}
 		}
-		Stream.Error current;
+		Stream.Error current, deepest;
 		bool ret = false;
 		foreach(i, ref p; parsers) {
 			static if(is(Prefix == Nothing))
@@ -378,7 +378,7 @@ struct Any(P...){
 			else {
 				ParserValue!Suffix suffixValue;
 				static if(i == 0){
-					if(sp.parse(stream, suffixValue, err)){
+					if(sp.parse(stream, suffixValue, deepest)){
 						value = mapper!i(combine(prefixValue, suffixValue));
 						return true;
 					}
@@ -389,13 +389,14 @@ struct Any(P...){
 						return true;
 					}
 					// pick the deeper error
-					if(err.location < current.location){
-						err = current;
+					if(deepest.location < current.location){
+						deepest = current;
 					}
 				}
 			}
 		}
 L_end:
+		err = deepest;
 		return ret;
 	}
 }

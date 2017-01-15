@@ -15,6 +15,7 @@ enum isStream(Stream) = is(typeof((){
 
 /// Test if p is some parser.
 enum isParser(Parser) = is(typeof((ref Parser parser){
+	static assert(isCallable!(Parser.parse));
 	alias Stream = ParserStream!Parser;
 	alias Value = ParserValue!Parser;
 	Stream stream;

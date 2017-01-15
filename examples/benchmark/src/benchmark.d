@@ -1,3 +1,4 @@
+module benchmark;
 
 import std.datetime, std.range, std.random, std.stdio, std.conv, std.exception;
 import pry.stream;
@@ -55,7 +56,17 @@ string generateSample(int depth){
 
 void main(){
 	auto sample = generateSample(20);
-	auto parser = makeParser();
+	version(pry)
+		auto parser = makeParser();
+	else version(manual){
+		import manual = parser;
+		struct parser {
+			alias parse = manual.expr;
+		}
+	}
+	else {
+		static assert(false, "Use -version=pry or -version=manual");
+	}
 	int value;
 	StopWatch sw;
 	sw.start();

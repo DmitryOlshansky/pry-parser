@@ -2,5 +2,13 @@ name "benchmark"
 description "Benchmark - a simple benchmark for Pry"
 authors "Dmitry Olshansky"
 targetType "executable"
-dependency "pry" version="0.3.1"
+dependency "pry" path="../.."
 license "BSL-1.0"
+
+configuration "pry" {
+	versions "pry"
+}
+
+configuration "manual" {
+	versions "manual"
+}

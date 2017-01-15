@@ -1,0 +1,17 @@
+## Pry Benchmark
+
+This is a simple benchmark of Pry parser vs manually written code.
+Note that manually written code cuts some corners on correctness - the input 
+is consumed even if the parse failed. But barring this minor detail the code
+should be equivalent.
+
+To get the best out of Pry use optimization and LDC compiler.
+
+Commands to run the benchmark:
+
+```shell
+# manual code configuration
+dub --config=manual --build=release --compiler=ldc
+# pry parser generator configuration
+dub --config=pry --build=release --compiler=ldc
+```
