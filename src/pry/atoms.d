@@ -62,7 +62,8 @@ template parsers(Stream)
 		bool parse(ref Stream stream, ref V value, ref Stream.Error err);
 	}
 
-	auto dynamic(V)(){
+	// Use LINE & FILE to provide unique types of dynamic.
+	auto dynamic(V, size_t line=__LINE__, string file=__FILE__)(){
 		static class Dynamic : DynamicParser!V {
 			DynamicParser!V wrapped;
 		final:

@@ -304,8 +304,6 @@ unittest{
 	alias S = SimpleStream!string;
 	with(parsers!S){
 		auto x = tk!'a'.map!(x => 1);
-		alias mapped = ExtractMap!(typeof(x));
-		assert(mapped(0) == 1);
 		assert(unmap(x) == tk!'a');
 		assert(unmap(unmap(x)) == tk!'a');
 	}
@@ -365,6 +363,7 @@ struct Any(P...){
 			}
 		}
 		Stream.Error current;
+		bool ret = false;
 		foreach(i, ref p; parsers) {
 			static if(is(Prefix == Nothing))
 				auto sp = unmap(p);
@@ -373,7 +372,8 @@ struct Any(P...){
 			alias Suffix = typeof(sp);
 			static if(is(Suffix == Nothing)){
 				value = mapper!i(prefixValue.expand);
-				return true;
+				ret = true;
+				goto L_end;
 			}
 			else {
 				ParserValue!Suffix suffixValue;
@@ -395,7 +395,8 @@ struct Any(P...){
 				}
 			}
 		}
-		return false;
+L_end:
+		return ret;
 	}
 }
 
