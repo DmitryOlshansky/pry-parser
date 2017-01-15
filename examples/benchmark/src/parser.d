@@ -60,7 +60,7 @@ bool term(ref Stream s, ref int val, ref Stream.Error err){
 		if(!term(s, v2, err)){
 			return false;
 		}
-		val = v * v2;
+		val = v / v2;
 		return true;
 	default:
 		val = v;
