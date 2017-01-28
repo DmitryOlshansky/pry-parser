@@ -5,7 +5,7 @@ import std.meta;
 
 private:
 
-struct RepImpl(bool collect, size_t minTimes, Parser){
+struct RepImpl(bool collect, size_t minTimes, size_t maxTimes, Parser){
 	alias Stream = ParserStream!Parser;
 	static if(collect)
 		alias Value = ParserValue!Parser[];
@@ -16,14 +16,16 @@ struct RepImpl(bool collect, size_t minTimes, Parser){
 	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
 		auto start = stream.mark;
 		ParserValue!Parser tmp;
-		for(size_t i = 0; i<minTimes; i++) {
+		size_t i = 0;
+		for(; i<minTimes; i++) {
 			if(!parser.parse(stream, tmp, err)){
 				stream.restore(start);
 				return false;
 			}
 			static if(collect) value ~= tmp;
 		}
-		while(parser.parse(stream, tmp, err)){
+		for(; i<maxTimes; i++){
+			if(!parser.parse(stream, tmp, err)) break;
 			static if(collect) value ~= tmp;
 		}
 		static if(!collect)
@@ -34,15 +36,15 @@ struct RepImpl(bool collect, size_t minTimes, Parser){
 
 
 /// Apply parser for minTimes times or more and return consumed range.
-public auto rep(size_t minTimes=1, Parser)(Parser parser)
+public auto rep(size_t minTimes=1, size_t maxTimes=size_t.max, Parser)(Parser parser)
 if(isParser!Parser){
-	return RepImpl!(false, minTimes, Parser)(parser);
+	return RepImpl!(false, minTimes, maxTimes, Parser)(parser);
 }
 
 /// Apply parser for minTimes times or more and return array of results.
-public auto array(size_t minTimes=1, Parser)(Parser parser)
+public auto array(size_t minTimes=1, size_t maxTimes=size_t.max, Parser)(Parser parser)
 if(isParser!Parser){
-	return RepImpl!(true, minTimes, Parser)(parser);
+	return RepImpl!(true, minTimes, maxTimes, Parser)(parser);
 }
 
 unittest
@@ -69,6 +71,13 @@ unittest
 		assert(p2.parse(s, r2, err));
 		assert(r2 == "aba"d);
 		assert(s.empty);
+
+
+		s = S("aaaa");
+		auto p3 = tk!'a'.rep!(2,3);
+		assert(p3.parse(s, r, err));
+		assert(r == "aaa");
+		assert(!s.empty);
 	}
 }
 
