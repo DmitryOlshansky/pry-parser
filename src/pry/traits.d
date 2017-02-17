@@ -3,8 +3,7 @@ module pry.traits;
 import std.range.primitives, std.traits;
 
 /// Test if Stream is some stream.
-enum isStream(Stream) = is(typeof((){
-	Stream stream;
+enum isStream(Stream) = is(typeof((Stream stream){
 	auto error = Stream.Error(stream.location, "description");
 	auto c = error.location;
 	string s = error.reason;
