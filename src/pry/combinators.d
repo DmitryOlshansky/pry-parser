@@ -1,7 +1,7 @@
 module pry.combinators;
 
 import pry.traits;
-import std.meta;
+import std.meta, std.range.primitives, std.typecons;
 
 private:
 
@@ -129,7 +129,6 @@ unittest {
 
 
 struct Seq(P...){
-	import std.typecons;
 	alias Stream = ParserStream!(P[0]);
 	alias Values = staticMap!(ParserValue, P);
 	P parsers;
@@ -466,5 +465,100 @@ unittest {
 		S.Error err;
 		assert(!p.parse(s, value, err));
 		assert(err.location == 1);
+	}
+}
+
+
+struct SkipWs(P) {
+	private P parser;
+	alias Stream = ParserStream!P;
+	alias Value = ParserValue!P;
+
+	bool parse(ref Stream s, ref Value v, ref Stream.Error err){
+		import std.uni;
+		while(!s.empty && isWhite(s.front)) s.popFront();
+		return parser.parse(s, v, err);
+	}
+}
+
+/// Skip whitespace at front then apply the `parser`.
+public auto skipWs(P)(P parser)
+if(isParser!P && is(ElementType!(ParserStream!P) : dchar)){
+	return SkipWs!P(parser);
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto normal = range!('0', '9').rep;
+		auto skipping = range!('0', '9').skipWs.rep;
+		auto s1 = "0 9 1".stream;
+		string r;
+		S.Error err;
+		assert(skipping.parse(s1, r, err));
+		assert(s1.empty);
+		assert(r == "0 9 1");
+
+		auto s2 = "0 9 1".stream;
+		assert(normal.parse(s2, r, err));
+		assert(!s2.empty);
+		assert(r == "0");
+		assert(s2.front == ' ');
+	}
+}
+
+struct AAImpl(size_t minTimes, size_t maxTimes, P) {
+	private P parser;
+	alias Stream = ParserStream!P;
+	alias Pair = ParserValue!P;
+	alias Key = typeof(Pair.init[0]);
+	alias Value = typeof(Pair.init[1]);
+
+	bool parse(ref Stream stream, ref Value[Key] aa, ref Stream.Error err){
+		auto start = stream.mark;
+		Pair tmp;
+		size_t i = 0;
+		for(; i<minTimes; i++) {
+			if(!parser.parse(stream, tmp, err)){
+				stream.restore(start);
+				return false;
+			}
+			aa[tmp[0]] = tmp[1];
+		}
+		for(; i<maxTimes; i++){
+			if(!parser.parse(stream, tmp, err)) break;
+			aa[tmp[0]] = tmp[1];
+		}
+		return true;
+	}
+}
+
+/++
+	Apply parser of key-value pairs (2-tuples) for minTimes times or more up to maxTimes,
+	construct an AA out of the results of parsing. 
++/
+auto aa(size_t minTimes=1, size_t maxTimes=size_t.max, P)(P parser)
+if(isParser!P && isTuple!(ParserValue!P) && ParserValue!P.length == 2){
+	return AAImpl!(minTimes, maxTimes, P)(parser);
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream;
+	import std.conv;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = seq(range!('a', 'z').rep.skipWs, stk!'=', range!('0', '9').rep.skipWs)
+				.map!(x => tuple(x[0], to!int(x[2]))).aa;
+		auto s = "a = 1 b = 3 temp = 36".stream;
+		int[string] table;
+		S.Error err;
+		assert(p.parse(s, table, err));
+		assert(s.empty);
+		assert(table["a"] == 1);
+		assert(table["b"] == 3);
+		assert(table["temp"] == 36);
 	}
 }

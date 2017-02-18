@@ -31,6 +31,13 @@ template parsers(Stream)
 	/// Single element token.
 	auto tk(alias c)(){ return Tk!c(); }
 
+	/// Single element token, skipping any whitespace at front.
+	auto stk(alias c)()
+	if(is(typeof(c) : ElementType!Stream) && is(typeof(c) : dchar)){
+		import pry.combinators;
+		return tk!c.skipWs;
+	}
+
 	struct Range(alias low, alias high)
 	if(is(typeof(low): ElementType!Stream) && is(typeof(high) : ElementType!Stream)){
 		static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
@@ -97,18 +104,34 @@ template parsers(Stream)
 	}
 }
 
-unittest
-{
+unittest {
 	alias S = SimpleStream!string;
-	with(parsers!S)
-	{
+	with(parsers!S) {
 		auto parser = dynamic!dchar;
 		parser = tk!'a';
 		S s = S("a");
 		dchar c;
-		S.Error e;
-		assert(parser.parse(s, c, e));
+		S.Error err;
+		assert(parser.parse(s, c, err));
 		assert(c == 'a');
 		assert(s.empty);
+	}
+}
+
+unittest {
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto s = " a".stream;
+		auto p = stk!'a';
+		dchar c;
+		S.Error err;
+		assert(p.parse(s, c, err));
+		assert(c == 'a');
+		assert(s.empty);
+
+		auto s2 = "a".stream;
+		assert(p.parse(s2, c, err));
+		assert(c == 'a');
+		assert(s2.empty);
 	}
 }
