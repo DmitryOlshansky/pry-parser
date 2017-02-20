@@ -3,3 +3,12 @@
 
 .DS_Store
 
+# Dub meta-data
+.dub
+dub.selections.json
+
+
+# Binaries
+__test__library__
+examples/benchmark/benchmark
+examples/calc/calc
