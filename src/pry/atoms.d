@@ -80,6 +80,7 @@ template parsers(Stream)
 			}
 	
 			bool parse(ref Stream stream, ref V value, ref Stream.Error err){
+				assert(wrapped, "Use of empty dynamic parser");
 				return wrapped.parse(stream, value, err); 
 			}
 		}	
