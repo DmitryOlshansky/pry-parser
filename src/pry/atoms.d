@@ -103,6 +103,40 @@ template parsers(Stream)
 		}
 		return new Wrapped(parser);
 	}
+
+	struct Set(alias set) {
+		import std.uni, std.conv;
+		static if(set.byInterval.length <= 6) {
+			mixin(set.toSourceCode("test"));
+		}
+		else {
+			static assert(0);
+		}
+
+		static immutable string msg = "expected one of " ~ to!string(set);
+
+		bool parse(ref Stream stream, ref dchar value, ref Stream.Error err){
+			if(stream.empty){
+				err.location = stream.location;
+				err.reason = "unexpected end of stream";
+			}
+			immutable c = stream.front;
+			if(test(c)){
+				value = stream.front;
+				stream.popFront();
+				return true;
+			}
+			err.location = stream.location;
+			err.reason = msg;
+			return false;
+		}
+	}
+
+	auto set(alias s)(){
+		import std.uni;
+		static assert(isCodepointSet!(typeof(s)), "set only works with std.uni.CodepointSet");
+		return Set!s();
+	}
 }
 
 unittest {
@@ -134,5 +168,23 @@ unittest {
 		assert(p.parse(s2, c, err));
 		assert(c == 'a');
 		assert(s2.empty);
+	}
+}
+
+unittest {
+	import std.uni;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = set!(CodepointSet('A', 'Z'+1, 'a', 'z'+1));
+		auto s = "aZ0".stream;
+		dchar c;
+		S.Error err;
+		assert(p.parse(s, c, err));
+		assert(c == 'a');
+		assert(p.parse(s, c, err));
+		assert(c == 'Z');
+		assert(!p.parse(s, c, err));
+		assert(s.front == '0');
+		auto p2 = set!(unicode.L);
 	}
 }
