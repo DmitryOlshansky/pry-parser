@@ -110,7 +110,54 @@ template parsers(Stream)
 			mixin(set.toSourceCode("test"));
 		}
 		else {
-			static assert(0);
+			alias Trie = CodepointSetTrie!(13, 8);
+			alias makeTrie = codepointSetTrie!(13, 8);
+
+			static struct BitTable {
+				uint[4] table;
+
+				this(CodepointSet set){
+					foreach (iv; set.byInterval)
+					{
+						foreach (v; iv.a .. iv.b)
+							add(v);
+					}
+				}
+
+				void add()(dchar ch){
+					immutable i = ch & 0x7F;
+					table[i >> 5]  |=  1<<(i & 31);
+				}
+
+				bool opIndex()(dchar ch) const{
+					immutable i = ch & 0x7F;
+					return (table[i >> 5]>>(i & 31)) & 1;
+				}
+			}
+
+			static struct CharMatcher {
+				BitTable ascii; // fast path for ASCII
+				Trie trie;	  // slow path for Unicode
+
+				this(CodepointSet set){
+					auto asciiSet = set & unicode.ASCII;
+					ascii = BitTable(asciiSet);
+					trie = makeTrie(set);
+				}
+
+				bool opIndex()(dchar ch) const{
+					if (ch < 0x80)
+						return ascii[ch];
+					else
+						return trie[ch];
+				}
+			}
+
+			static immutable matcher = CharMatcher(set);
+
+			static bool test(dchar ch){
+				return matcher[ch];
+			}
 		}
 
 		static immutable string msg = "expected one of " ~ to!string(set);
@@ -186,5 +233,10 @@ unittest {
 		assert(!p.parse(s, c, err));
 		assert(s.front == '0');
 		auto p2 = set!(unicode.L);
+		s = "Яz".stream;
+		assert(p2.parse(s, c, err));
+		assert(c == 'Я');
+		assert(p2.parse(s, c, err));
+		assert(c == 'z');
 	}
 }
