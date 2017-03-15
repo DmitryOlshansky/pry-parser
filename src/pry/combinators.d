@@ -539,7 +539,7 @@ struct AAImpl(size_t minTimes, size_t maxTimes, P) {
 	Apply parser of key-value pairs (2-tuples) for minTimes times or more up to maxTimes,
 	construct an AA out of the results of parsing. 
 +/
-auto aa(size_t minTimes=1, size_t maxTimes=size_t.max, P)(P parser)
+public auto aa(size_t minTimes=1, size_t maxTimes=size_t.max, P)(P parser)
 if(isParser!P && isTuple!(ParserValue!P) && ParserValue!P.length == 2){
 	return AAImpl!(minTimes, maxTimes, P)(parser);
 }
@@ -560,5 +560,44 @@ unittest {
 		assert(table["a"] == 1);
 		assert(table["b"] == 3);
 		assert(table["temp"] == 36);
+	}
+}
+
+struct Optional(P) {
+	private P parser;
+	alias Stream = ParserStream!P;
+	alias Value = ParserValue!P;
+
+	bool parse(ref Stream stream, ref Nullable!Value option, ref Stream.Error err){
+		Value tmp;
+		if(parser.parse(stream, tmp, err)) {
+			option = tmp;
+			return true;
+		}
+		option.nullify();
+		return true;
+	}
+}
+
+/// Try to apply `parser`, produce null on failure.
+public auto optional(P)(P parser)
+if(isParser!P){
+	return Optional!P(parser);
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p = range!('a', 'z').optional;
+		auto s = "a".stream;
+		Nullable!dchar c;
+		S.Error err;
+		assert(p.parse(s, c, err));
+		assert(c == 'a');
+		assert(s.empty);
+		assert(p.parse(s, c, err));
+		assert(c.isNull);
 	}
 }
