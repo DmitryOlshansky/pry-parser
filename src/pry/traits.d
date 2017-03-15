@@ -28,3 +28,44 @@ alias ParserValue(Parser) = Parameters!(Parser.parse)[1];
 
 /// Extract stream type of a given parser.
 alias ParserStream(Parser) = Parameters!(Parser.parse)[0];
+
+class ParseFailure(S) : Exception 
+if(isStream!S){
+	private S.Error err;
+
+	this(S.Error err, string file = __FILE__, size_t line = __LINE__,
+			Throwable next = null){
+		super(err.reason, file, line, next);
+		this.err = err;
+	}
+
+	override string toString(){
+		import std.format;
+		return format("Parse failure at %s: %s", err.location, err.reason);
+	}
+}
+
+/// Convenience wrapper for Parser interface - parse a string, throw on failure.
+auto parse(Parser, S)(S str, Parser parser)
+if(isParser!Parser && isSomeString!S){
+	import pry.stream;
+	alias Stream = SimpleStream!S;
+	auto stream = str.stream;
+	ParserValue!Parser value;
+	Stream.Error err;
+	if(!parser.parse(stream, value, err)){
+		throw new ParseFailure!Stream(err);
+	}
+	return value;
+}
+
+unittest{
+	import pry.atoms, pry.stream;
+	import std.exception;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p = tk!'a';
+		assert("a".parse(p) == 'a');
+		assertThrown("".parse(p));
+	}
+}
