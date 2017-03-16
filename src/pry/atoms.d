@@ -106,7 +106,8 @@ template parsers(Stream)
 
 	struct Set(alias set) {
 		import std.uni, std.conv;
-		static if(set.byInterval.length <= 6) {
+		enum val = set.byInterval.length;
+		static if(val <= 6) {
 			mixin(set.toSourceCode("test"));
 		}
 		else {
@@ -160,7 +161,12 @@ template parsers(Stream)
 			}
 		}
 
-		static immutable string msg = "expected one of " ~ to!string(set);
+		static immutable string msg = (){
+			import std.format;
+			string message = "expected one of ";
+			set.toString((const(char)[] s){ message ~= s; }, FormatSpec!char("%x"));
+			return message;
+		}();
 
 		bool parse(ref Stream stream, ref dchar value, ref Stream.Error err){
 			if(stream.empty){

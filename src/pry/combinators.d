@@ -5,18 +5,19 @@ import std.meta, std.range.primitives, std.typecons;
 
 private:
 
-struct RepImpl(bool collect, size_t minTimes, size_t maxTimes, Parser){
+struct RepImpl(bool collect, Array, size_t minTimes, size_t maxTimes, Parser){
 	alias Stream = ParserStream!Parser;
 	static if(collect)
-		alias Value = ParserValue!Parser[];
+		alias Value = Array;
 	else
 		alias Value = Stream.Range;
-	Parser parser;
+	private Parser parser;
 
 	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
 		auto start = stream.mark;
 		ParserValue!Parser tmp;
 		size_t i = 0;
+		static if(collect) value = null;
 		for(; i<minTimes; i++) {
 			if(!parser.parse(stream, tmp, err)){
 				stream.restore(start);
@@ -38,13 +39,19 @@ struct RepImpl(bool collect, size_t minTimes, size_t maxTimes, Parser){
 /// Apply parser for minTimes times or more and return consumed range.
 public auto rep(size_t minTimes=1, size_t maxTimes=size_t.max, Parser)(Parser parser)
 if(isParser!Parser){
-	return RepImpl!(false, minTimes, maxTimes, Parser)(parser);
+	return RepImpl!(false, ParserValue!Parser[], minTimes, maxTimes, Parser)(parser);
 }
 
 /// Apply parser for minTimes times or more and return array of results.
 public auto array(size_t minTimes=1, size_t maxTimes=size_t.max, Parser)(Parser parser)
 if(isParser!Parser){
-	return RepImpl!(true, minTimes, maxTimes, Parser)(parser);
+	return RepImpl!(true, ParserValue!Parser[], minTimes, maxTimes, Parser)(parser);
+}
+
+/// Apply parser for minTimes times or more and encode results to an UTF string.
+public auto utfString(Char, size_t minTimes=1, size_t maxTimes=size_t.max, Parser)(Parser parser)
+if(isParser!Parser){
+	return RepImpl!(true, immutable(Char)[], minTimes, maxTimes, Parser)(parser);
 }
 
 unittest
@@ -78,6 +85,12 @@ unittest
 		assert(p3.parse(s, r, err));
 		assert(r == "aaa");
 		assert(!s.empty);
+
+		s = S("ФЯ");
+		auto p4 = any(tk!'Ф', tk!'Я').utfString!char;
+		assert(p4.parse(s, r, err));
+		assert(r == "ФЯ");
+		assert(s.empty);
 	}
 }
 
@@ -599,5 +612,46 @@ unittest {
 		assert(s.empty);
 		assert(p.parse(s, c, err));
 		assert(c.isNull);
+	}
+}
+
+struct Slice(P){
+	private P parser;
+	alias Stream = ParserStream!P;
+	alias Value = ParserValue!P;
+
+	bool parse(ref Stream stream, ref Stream.Range range, ref Stream.Error err){
+		auto start = stream.mark();
+		Value val;
+		if(parser.parse(stream, val, err)) {
+			range = stream.slice(start);
+			return true;
+		}
+		return false;
+	}
+}
+
+/// Apply parser, discard the value and instead produce the slice of parsed stream.
+public auto slice(P)(P parser)
+if(isParser!P){
+	return Slice!P(parser);
+}
+
+///
+unittest {
+	import pry.atoms, pry.stream, std.conv;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p = seq(tk!'-'.optional, range!('0', '9').rep)
+						.slice
+						.map!(x => to!int(x));
+		auto s = "-13".stream;
+		int value;
+		S.Error err;
+		assert(p.parse(s, value, err));
+		assert(value == -13);
+		s = "5".stream;
+		assert(p.parse(s, value, err));
+		assert(value == 5);
 	}
 }

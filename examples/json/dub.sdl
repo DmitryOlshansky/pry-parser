@@ -1,0 +1,6 @@
+name "json"
+description "Json - parsing JSON with Pry parser"
+authors "Dmitry Olshansky"
+targetType "executable"
+dependency "pry" path="../.."
+license "BSL-1.0"

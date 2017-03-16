@@ -9,6 +9,8 @@ dub.selections.json
 
 
 # Binaries
-__test__library__
+pry-test-library
 examples/benchmark/benchmark
 examples/calc/calc
+examples/json/json
+examples/json/json-test-application
