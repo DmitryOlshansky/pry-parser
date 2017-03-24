@@ -2,7 +2,7 @@ module json;
 
 import pry;
 
-import std.stdio, std.conv, std.uni;
+import std.stdio, std.conv, std.uni, std.variant, std.typecons;
 
 alias S = SimpleStream!string;
 
@@ -65,6 +65,41 @@ unittest{
 	assert("0".parse(jsNumber) == 0);
 	assert(" -1e2".parse(jsNumber) == -100);
 	assert("3.1415".parse(jsNumber) == 3.1415);
+}
+
+auto jsonParser(){
+	with(parsers!S) {
+		auto jsValue = dynamic!Variant;
+		auto pair = seq(jsString, stk!':', jsValue).map!(x => tuple(x[0], x[2]));
+		auto jsObject = seq(
+			tk!'{',
+			seq(
+				pair, seq(stk!',', pair).map!(x => x[1]).aa!0
+			).optional.map!((x){
+				if(x.isNull) return null;
+				auto head = x[0];
+				auto aa = x[1];
+				aa[head[0]] = head[1];
+				return aa;
+			}),
+			tk!'}'
+		).skipWs.map!(x => x[1]);
+		auto jsArray = seq(
+			tk!'[',
+			delimited(jsValue, stk!',').optional,
+			tk!']'
+		).skipWs.map!(x => x[1].isNull ? null : x[1].get());
+		jsValue = any(
+			jsString.map!(x => Variant(x)),
+			jsNumber.map!(x => Variant(x)),
+			jsObject.map!(x => Variant(x)),
+			jsArray.map!(x => Variant(x))/*,
+			literal!"true",
+			literal!"false",
+			literal!"null"*/
+		);
+		return jsValue;
+	}
 }
 
 version(unittest){}
