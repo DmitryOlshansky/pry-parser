@@ -74,7 +74,7 @@ auto jsonParser(){
 		auto jsValue = dynamic!Variant;
 		auto pair = seq(jsString, stk!':', jsValue).map!(x => tuple(x[0], x[2]));
 		auto jsObject = seq(
-			stk!'{',
+			tk!'{',
 			seq(
 				pair, seq(stk!',', pair).map!(x => x[1]).aa!0
 			).optional.map!((x){
@@ -89,7 +89,7 @@ auto jsonParser(){
 		auto jsArray = seq(
 			tk!'[',
 			delimited(jsValue, stk!',').optional,
-			tk!']'
+			stk!']'
 		).skipWs.map!(x => x[1].isNull ? null : x[1].get());
 		jsValue = any(
 			jsString.map!(x => Variant(x)),
@@ -105,7 +105,7 @@ auto jsonParser(){
 }
 
 unittest {
-	auto v = `{ "a": 12, "b": [1,2,3], "c" : true, "null" : null }`.parse(jsonParser);
+	auto v = `{ "a": 12, "b": [1,2,3 ], "c" : true, "null" : null }`.parse(jsonParser);
 	assert(v["a"] == 12);
 	assert(v["b"] == [ Variant(1), Variant(2), Variant(3) ]);
 	assert(v["c"] == true);
