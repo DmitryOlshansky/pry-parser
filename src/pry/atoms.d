@@ -41,7 +41,7 @@ template parsers(Stream)
 	struct Range(alias low, alias high)
 	if(is(typeof(low): ElementType!Stream) && is(typeof(high) : ElementType!Stream)){
 		static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
-			
+
 		bool parse(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err){
 			if(stream.empty) {
 				err.location = stream.location;
@@ -61,7 +61,7 @@ template parsers(Stream)
 			}
 		}
 	}
-	
+
 	// In a range of elements.
 	auto range(alias low, alias high)(){ return Range!(low, high)(); }
 
@@ -78,12 +78,12 @@ template parsers(Stream)
 			if(isParser!P && !is(P : Dynamic)){
 				wrapped = wrap(parser);
 			}
-	
+
 			bool parse(ref Stream stream, ref V value, ref Stream.Error err){
 				assert(wrapped, "Use of empty dynamic parser");
-				return wrapped.parse(stream, value, err); 
+				return wrapped.parse(stream, value, err);
 			}
-		}	
+		}
 		return new Dynamic();
 	}
 
@@ -92,13 +92,13 @@ template parsers(Stream)
 		alias V = ParserValue!Parser;
 		static class Wrapped: DynamicParser!V {
 			Parser p;
-			
+
 			this(Parser p){
 				this.p = p;
 			}
 
 			bool parse(ref Stream stream, ref V value, ref Stream.Error err){
-				return p.parse(stream, value, err); 
+				return p.parse(stream, value, err);
 			}
 		}
 		return new Wrapped(parser);
@@ -190,6 +190,41 @@ template parsers(Stream)
 		static assert(isCodepointSet!(typeof(s)), "set only works with std.uni.CodepointSet");
 		return Set!s();
 	}
+
+	struct Literal(alias literal) {
+		static immutable msg = "expected '"~literal~"' literal";
+
+		bool parse(ref Stream stream, ref Stream.Range value, ref Stream.Error err){
+			auto m = stream.mark();
+			auto t = literal.save();
+			for(;;) {
+				if (t.empty) {
+					value = stream.slice(m);
+					return true;
+				}
+				if (stream.empty) {
+					stream.restore(m);
+					err.location = stream.location;
+					err.reason = "unexpected end of stream";
+					return false;
+				}
+				if (t.front != stream.front) {
+					stream.restore(m);
+					err.location = stream.location;
+					err.reason = msg;
+					return false;
+				}
+				t.popFront();
+				stream.popFront();
+			}
+		}
+	}
+
+	auto literal(alias lit)()
+	if(isForwardRange!(typeof(lit))
+	&& is(ElementType!(typeof(lit)) : ElementType!(Stream.Range))) {
+		return Literal!lit();
+	}
 }
 
 unittest {
@@ -244,5 +279,24 @@ unittest {
 		assert(c == 'Я');
 		assert(p2.parse(s, c, err));
 		assert(c == 'z');
+	}
+}
+
+unittest {
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = literal!"abc";
+		auto s = "abcd".stream;
+		S.Error err;
+		string slice;
+		assert(p.parse(s, slice, err));
+		assert(s.front == 'd');
+		assert(slice == "abc");
+		s = "ab".stream;
+		assert(!p.parse(s, slice, err));
+		assert(s.front == 'a');
+		s = "abd".stream;
+		assert(!p.parse(s, slice, err));
+		assert(s.front == 'a');
 	}
 }

@@ -655,3 +655,60 @@ unittest {
 		assert(value == 5);
 	}
 }
+
+struct Delimited(Item, Delimiter){
+	private Item item;
+	private Delimiter delimiter;
+	alias Stream = ParserStream!Item;
+	alias Value = ParserValue!Item;
+
+	bool parse(ref Stream stream, ref Value[] values, ref Stream.Error err){
+		values = Value[].init;
+		bool first = true;
+		Value val;
+		ParserValue!Delimiter tmp;
+		auto m = stream.mark();
+		if (item.parse(stream, val, err)){
+			values ~= val;
+			for(;;) {
+				if(!delimiter.parse(stream, tmp, err)) break;
+				if (item.parse(stream, val, err))
+					values ~= val;
+				else {
+					stream.restore(m);
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
+/// Parse a sequence of `item` delimited by `del`
+public auto delimited(Item, Delimiter)(Item item, Delimiter del)
+if(isParser!Item && isParser!Delimiter){
+	return Delimited!(Item, Delimiter)(item, del);
+}
+
+///
+unittest{
+	import pry.atoms, pry.stream, std.conv;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p = delimited(
+			range!('0', '9').rep.skipWs.map!(x => to!int(x)),
+			stk!','
+		);
+		auto s = " 2, 4,5".stream;
+		int[] values;
+		S.Error err;
+		assert(p.parse(s, values, err));
+		assert(values == [2, 4, 5]);
+		s = "10".stream;
+		assert(p.parse(s, values, err));
+		assert(values == [10]);
+		s = "".stream;
+		assert(p.parse(s, values, err));
+		assert(values == []);
+	}
+}

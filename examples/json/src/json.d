@@ -6,9 +6,9 @@ import std.stdio, std.conv, std.uni, std.variant, std.typecons;
 
 alias S = SimpleStream!string;
 
-static immutable allowedChars =
+enum allowedChars =
 		unicode.Cc.add('"', '"'+1).add('\\', '\\'+1).inverted;
-static immutable hex = CodepointSet('0', '9'+1, 'a', 'f'+1, 'A', 'F'+1);
+enum hex = CodepointSet('0', '9'+1, 'a', 'f'+1, 'A', 'F'+1);
 
 auto jsString(){
 	with(parsers!S) {
@@ -44,7 +44,7 @@ auto jsNumber(){
 			tk!'-'.optional,
 			any(
 				tk!'0',
-				seq(range!('1', '9'), digit.rep!0).optional
+				seq(range!('1', '9'), digit.rep!0)
 			), // got to skip whitespace in front of tokens
 			// optional fraction
 			seq(
@@ -72,7 +72,7 @@ auto jsonParser(){
 		auto jsValue = dynamic!Variant;
 		auto pair = seq(jsString, stk!':', jsValue).map!(x => tuple(x[0], x[2]));
 		auto jsObject = seq(
-			tk!'{',
+			stk!'{',
 			seq(
 				pair, seq(stk!',', pair).map!(x => x[1]).aa!0
 			).optional.map!((x){
@@ -82,7 +82,7 @@ auto jsonParser(){
 				aa[head[0]] = head[1];
 				return aa;
 			}),
-			tk!'}'
+			stk!'}'
 		).skipWs.map!(x => x[1]);
 		auto jsArray = seq(
 			tk!'[',
@@ -93,17 +93,22 @@ auto jsonParser(){
 			jsString.map!(x => Variant(x)),
 			jsNumber.map!(x => Variant(x)),
 			jsObject.map!(x => Variant(x)),
-			jsArray.map!(x => Variant(x))/*,
-			literal!"true",
-			literal!"false",
-			literal!"null"*/
+			jsArray.map!(x => Variant(x)),
+			literal!"true".map!(x => Variant(true)),
+			literal!"false".map!(x => Variant(false)),
+			literal!"null".map!(x => Variant.init)
 		);
 		return jsValue;
 	}
 }
 
-version(unittest){}
-else
+unittest {
+	auto v = `{ "a": 12, "b": [1,2,3], "c" : true }`.parse(jsonParser);
+	assert(v["a"] == 12);
+	assert(v["b"] == [ Variant(1), Variant(2), Variant(3) ]);
+	assert(v["c"] == true);
+}
+
 void main(){
 	
 }
