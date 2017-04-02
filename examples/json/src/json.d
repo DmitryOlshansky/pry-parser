@@ -2,7 +2,9 @@ module json;
 
 import pry;
 
-import std.stdio, std.conv, std.uni, std.variant, std.typecons;
+import std.stdio, std.conv, std.uni, std.variant, std.typecons,
+	std.json, std.datetime;;
+import file = std.file;
 
 alias S = SimpleStream!string;
 
@@ -110,6 +112,26 @@ unittest {
 	assert(v["null"] == null);
 }
 
-void main(){
-	
+void parseStd(string data){
+	parseJSON(data);
+}
+
+void parsePry(string data){
+	data.parse(jsonParser);
+}
+
+void main(string[] argv){
+	void usage(){
+		writeln("Usage:\n./json <file>");
+	}
+	if(argv.length != 2) return usage();
+	const iterations = 1_000;
+	string data = cast(string)file.read(argv[1]);
+	auto results = benchmark!(
+		() => parseStd(data),
+		() => parsePry(data)
+	)(iterations);
+	writefln("std.json: %s us\npry: %s us\n",
+		results[0].usecs / cast(double)iterations,
+		results[1].usecs / cast(double)iterations);
 }
