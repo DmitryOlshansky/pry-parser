@@ -96,17 +96,18 @@ auto jsonParser(){
 			jsArray.map!(x => Variant(x)),
 			literal!"true".map!(x => Variant(true)),
 			literal!"false".map!(x => Variant(false)),
-			literal!"null".map!(x => Variant.init)
+			literal!"null".map!(x => Variant(null))
 		);
 		return jsValue;
 	}
 }
 
 unittest {
-	auto v = `{ "a": 12, "b": [1,2,3], "c" : true }`.parse(jsonParser);
+	auto v = `{ "a": 12, "b": [1,2,3], "c" : true, "null" : null }`.parse(jsonParser);
 	assert(v["a"] == 12);
 	assert(v["b"] == [ Variant(1), Variant(2), Variant(3) ]);
 	assert(v["c"] == true);
+	assert(v["null"] == null);
 }
 
 void main(){
