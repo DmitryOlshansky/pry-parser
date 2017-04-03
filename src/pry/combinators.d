@@ -663,23 +663,26 @@ struct Delimited(Item, Delimiter){
 	alias Value = ParserValue!Item;
 
 	bool parse(ref Stream stream, ref Value[] values, ref Stream.Error err){
+		import std.array;
 		values = Value[].init;
 		bool first = true;
 		Value val;
 		ParserValue!Delimiter tmp;
+		auto app = appender!(Value[]);
 		auto m = stream.mark();
 		if (item.parse(stream, val, err)){
-			values ~= val;
+			app.put(val);
 			for(;;) {
 				if(!delimiter.parse(stream, tmp, err)) break;
 				if (item.parse(stream, val, err))
-					values ~= val;
+					app.put(val);
 				else {
 					stream.restore(m);
 					return false;
 				}
 			}
 		}
+		values = app.data();
 		return true;
 	}
 }
