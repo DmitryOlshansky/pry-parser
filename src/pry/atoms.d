@@ -172,6 +172,7 @@ template parsers(Stream)
 			if(stream.empty){
 				err.location = stream.location;
 				err.reason = "unexpected end of stream";
+				return false;
 			}
 			immutable c = stream.front;
 			if(test(c)){
@@ -191,7 +192,7 @@ template parsers(Stream)
 		return Set!s();
 	}
 
-	struct Literal(alias literal) {
+	struct _Literal(alias literal) {
 		static immutable msg = "expected '"~literal~"' literal";
 
 		bool parse(ref Stream stream, ref Stream.Range value, ref Stream.Error err){
@@ -223,7 +224,7 @@ template parsers(Stream)
 	auto literal(alias lit)()
 	if(isForwardRange!(typeof(lit))
 	&& is(ElementType!(typeof(lit)) : ElementType!(Stream.Range))) {
-		return Literal!lit();
+		return _Literal!lit();
 	}
 }
 

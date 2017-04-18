@@ -39,13 +39,13 @@ auto jsString(){
 				tk!'"',
 				tk!'\\',
 				tk!'/',
-				tk!'b'.map!(_ => '\b'),
-				tk!'f'.map!(_ => '\f'),
-				tk!'n'.map!(_ => '\n'),
-				tk!'r'.map!(_ => '\r'),
-				tk!'t'.map!(_ => '\t'),
+				tk!'b'.map!(_ => cast(dchar)'\b'),
+				tk!'f'.map!(_ => cast(dchar)'\f'),
+				tk!'n'.map!(_ => cast(dchar)'\n'),
+				tk!'r'.map!(_ => cast(dchar)'\r'),
+				tk!'t'.map!(_ => cast(dchar)'\t'),
 				seq(tk!'u', set!hex.rep!(4,4)).map!(x => cast(dchar)to!int(x[1], 16))
-			)).map!(x => x[0])
+			)).map!(x => x[1])
 		).utfString!(char, 0);
 		auto full = seq(tk!'"', any(unescaped_string, escaped_string), tk!'"');
 		return full.skipWs.map!(x => x[1]);

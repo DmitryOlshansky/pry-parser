@@ -31,7 +31,7 @@ alias ParserStream(Parser) = Parameters!(Parser.parse)[0];
 
 class ParseFailure(S) : Exception 
 if(isStream!S){
-	private S.Error err;
+	S.Error err;
 
 	this(S.Error err, string file = __FILE__, size_t line = __LINE__,
 			Throwable next = null){
