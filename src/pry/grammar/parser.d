@@ -127,7 +127,7 @@ unittest {
 	assert("_90".parse(identifier) == "_90");
 }
 
-auto parser() {
+auto pegParser() {
 	with(parsers!Stream) {
 		auto alternative = dynamic!Ast;
 		auto simpleAtom = any(
@@ -178,7 +178,7 @@ unittest {
 	def > ^( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ 
 	`;
 	try {
-		prettyPrint(s.parse(parser));
+		prettyPrint(s.parse(pegParser));
 	}
 	catch(ParseFailure!Stream ex){
 		writeln(s[ex.err.location .. $]);
