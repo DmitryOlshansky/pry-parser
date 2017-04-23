@@ -1,9 +1,31 @@
 module pry.combinators;
 
 import pry.traits;
-import std.meta, std.range.primitives, std.typecons;
+import std.meta, std.range.primitives, std.typecons, std.traits;
 
 private:
+
+public struct Nullable(T){
+	bool isNull = true;
+	T value;
+
+	this(T val){
+		value = val;
+		isNull = false;
+	}
+
+	void opAssign(T value){
+		this.value = value;
+		isNull = false;
+	}
+
+	void nullify(){
+		isNull = true;
+		value = T.init;
+	}
+
+	alias value this;
+}
 
 struct RepImpl(bool collect, Array, size_t minTimes, size_t maxTimes, Parser){
 	alias Stream = ParserStream!Parser;
@@ -13,7 +35,7 @@ struct RepImpl(bool collect, Array, size_t minTimes, size_t maxTimes, Parser){
 		alias Value = Stream.Range;
 	private Parser parser;
 
-	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) const {
 		auto start = stream.mark;
 		ParserValue!Parser tmp;
 		size_t i = 0;
@@ -101,7 +123,7 @@ struct Map(Parser, alias f) {
 	alias mapper = f;
 	Parser parser;
 
-	bool parse(ref Stream stream, ref Value value, ref Stream.Error err){
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) const {
 		ParserValue!Parser tmp;
 		if(parser.parse(stream, tmp, err)){
 			value = f(tmp);
@@ -146,7 +168,7 @@ struct Seq(P...){
 	alias Values = staticMap!(ParserValue, P);
 	P parsers;
 	
-	bool parse(ref Stream stream, ref Tuple!Values value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Tuple!Values value, ref Stream.Error err) const {
 		auto save = stream.mark;
 		foreach(i, ref p; parsers) {
 			if(!p.parse(stream, value[i], err)){
@@ -197,7 +219,7 @@ template commonPrefixLength(T1, T2){
 			static if(U1.length == 0 || U2.length == 0){
 				enum commonPrefixLength = 0;
 			}
-			else static if(is(U1[0] == U2[0])){
+			else static if(is(Unqual!(U1[0]) == Unqual!(U2[0]))){
 				enum commonPrefixLength = 1 +
 					commonPrefixLength!(TList!(U1[1..$]), TList!(U2[1..$]));
 			}
@@ -306,7 +328,10 @@ template Unmap(P){
 	static if(is(P : Map!(U, f), alias f, U)){
 		alias Unmap = U;
 	}
-	else {
+	else static if(is(P : const(Map!(U, f)), alias f, U)){
+		alias Unmap = const(U);
+	}
+	else{
 		alias Unmap = P;
 	}
 }
@@ -356,15 +381,15 @@ struct Any(P...){
 		prefix = extractPrefix();
 	}
 
-	auto extractPrefix(){
+	auto extractPrefix() const {
 		staticMap!(Unmap, P) unmapped = void;
 		foreach(i, ref p; parsers){
-			unmapped[i] = unmap(p);
+			unmapped[i] = cast()unmap(p);
 		}
 		return commonPrefix(unmapped);
 	}
 
-	auto combine(T1, T2)(T1 prefixValue, T2 suffixValue){
+	static auto combine(T1, T2)(T1 prefixValue, T2 suffixValue){
 		static if(is(T1 == Nothing)){
 			return suffixValue;
 		}
@@ -373,7 +398,7 @@ struct Any(P...){
 		}
 	}
 
-	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) const {
 		static if(is(Prefix == Nothing)){
 			Nothing prefixValue;
 		}
@@ -487,7 +512,7 @@ struct SkipWs(P) {
 	alias Stream = ParserStream!P;
 	alias Value = ParserValue!P;
 
-	bool parse(ref Stream s, ref Value v, ref Stream.Error err){
+	bool parse(ref Stream s, ref Value v, ref Stream.Error err) const {
 		import std.uni;
 		while(!s.empty && isWhite(s.front)) s.popFront();
 		return parser.parse(s, v, err);
@@ -529,7 +554,7 @@ struct AAImpl(size_t minTimes, size_t maxTimes, P) {
 	alias Key = typeof(Pair.init[0]);
 	alias Value = typeof(Pair.init[1]);
 
-	bool parse(ref Stream stream, ref Value[Key] aa, ref Stream.Error err){
+	bool parse(ref Stream stream, ref Value[Key] aa, ref Stream.Error err) const {
 		auto start = stream.mark;
 		Pair tmp;
 		size_t i = 0;
@@ -581,7 +606,7 @@ struct Optional(P) {
 	alias Stream = ParserStream!P;
 	alias Value = ParserValue!P;
 
-	bool parse(ref Stream stream, ref Nullable!Value option, ref Stream.Error err){
+	bool parse(ref Stream stream, ref Nullable!Value option, ref Stream.Error err) const {
 		Value tmp;
 		if(parser.parse(stream, tmp, err)) {
 			option = tmp;
@@ -620,7 +645,7 @@ struct Slice(P){
 	alias Stream = ParserStream!P;
 	alias Value = ParserValue!P;
 
-	bool parse(ref Stream stream, ref Stream.Range range, ref Stream.Error err){
+	bool parse(ref Stream stream, ref Stream.Range range, ref Stream.Error err) const {
 		auto start = stream.mark();
 		Value val;
 		if(parser.parse(stream, val, err)) {
@@ -662,7 +687,7 @@ struct Delimited(Item, Delimiter){
 	alias Stream = ParserStream!Item;
 	alias Value = ParserValue!Item;
 
-	bool parse(ref Stream stream, ref Value[] values, ref Stream.Error err){
+	bool parse(ref Stream stream, ref Value[] values, ref Stream.Error err) const {
 		import std.array;
 		values = Value[].init;
 		bool first = true;

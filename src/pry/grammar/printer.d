@@ -16,6 +16,12 @@ class PrettyPrinter : Visitor {
 		return format("{%d,%d}", mod.min, mod.max);
 	}
 
+	override void visit(Grammar grammar) {
+		writefln("%s:", grammar.name);
+		foreach(d; grammar.defs)
+			d.accept(this);
+	}
+
 	override void visit(Definition def) {
 		string type = def.type == "" ? "" : format(": %s", def.type);
 		writef("%s %s > ", def.name, type);
@@ -38,7 +44,7 @@ class PrettyPrinter : Visitor {
 
 	override void visit(Map map) {
 		map.ast.accept(this);
-		writef("{ %s }", map.code);
+		writef("%s", map.code);
 	}
 
 	override void visit(NegativeLookahead neg) {
@@ -73,8 +79,7 @@ class PrettyPrinter : Visitor {
 	}
 }
 
-void prettyPrint(Definition[] defs) {
+void prettyPrint(Grammar grammar) {
 	auto pp = new PrettyPrinter();
-	foreach(d; defs)
-		d.accept(pp);
+	grammar.accept(pp);
 }

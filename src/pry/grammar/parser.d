@@ -6,30 +6,9 @@ import std.conv, std.exception, std.uni;
 
 alias Stream = SimpleStream!string;
 
-struct SkipWs2(P) {
-	private P parser;
-	alias Stream = ParserStream!P;
-	alias Value = ParserValue!P;
-
-	bool parse(ref Stream s, ref Value v, ref Stream.Error err){
-		while(!s.empty) {
-			immutable c = s.front;
-			if(c != ' ') break;
-			s.popFront();
-		}
-		return parser.parse(s, v, err);
-	}
-}
-
-/// Skip whitespace at front then apply the `parser`.
-public auto skipWs2(P)(P parser)
-if(isParser!P){
-	return SkipWs2!P(parser);
-}
-
 auto modifier() {
 	with(parsers!Stream) {
-		auto digits = range!('0', '9').rep.skipWs2.map!(x => to!int(x));
+		auto digits = range!('0', '9').rep.skipWs.map!(x => to!int(x));
 		return any(
 			tk!'*'.map!(x => Modifier(0, uint.max)),
 			tk!'+'.map!(x => Modifier(1, uint.max)),
@@ -50,7 +29,7 @@ unittest {
 }
 
 struct CharClassParser {
-	bool parse(ref Stream stream, ref CodepointSet set, ref Stream.Error err) {
+	bool parse(ref Stream stream, ref CodepointSet set, ref Stream.Error err) const {
 		auto m = stream.mark();
 		try {
 			set = unicode.parseSet(stream);
@@ -127,6 +106,43 @@ unittest {
 	assert("_90".parse(identifier) == "_90");
 }
 
+struct Balanced {
+	bool parse(ref Stream s, ref string code, ref Stream.Error err) const {
+		if(s.empty) {
+			err.location = s.location;
+			err.reason = "unexpected end of input";
+			return false;
+		}
+		if(s.front != '{') {
+			err.location = s.location;
+			err.reason = "expected '{'";
+			return false;
+		}
+		auto m = s.mark();
+		s.popFront();
+		int count = 1;
+		while(!s.empty){
+			auto c = s.front;
+			if(c == '{') count++;
+			if(c == '}') count--;
+			s.popFront();
+			if(count == 0) break;
+		}
+		if(count != 0) {
+			s.restore(m);
+			err.location = s.location;
+			err.reason = "unbalanced parens";
+			return false;
+		}
+		code = s.slice(m);
+		return true;
+	}
+}
+
+auto balanced(){
+	return Balanced();
+}
+
 auto pegParser() {
 	with(parsers!Stream) {
 		auto alternative = dynamic!Ast;
@@ -141,41 +157,47 @@ auto pegParser() {
 					auto ast = x[0];
 					if(!x[1].isNull) ast.mod = x[1];
 					return ast; 
-				}).skipWs2.array.map!(x => cast(Ast)new SimpleSequence(x)),
+				}).skipWs.array.map!(x => cast(Ast)new SimpleSequence(x)),
 				seq(identifier, modifier.optional).map!((x){
 					auto ast = cast(Ast)new Reference(x[0]);
 					if(!x[1].isNull) ast.mod = x[1];
 					return ast;
-				}).skipWs2,
+				}).skipWs,
 				seq(tk!'(', alternative, stk!')', modifier.optional).map!((x){
 					auto ast = x[1];
 					if(!x[3].isNull) ast.mod = x[3];
 					return ast;
-				}).skipWs2
+				}).skipWs
 			)
 		).map!((x){ if(!x[0].isNull) x[1].ignored = true; return x[1]; });
+		auto mappedAtom = seq(
+			atomBase, balanced.skipWs.optional
+		).map!((x){ return x[1].isNull ? x[0] : cast(Ast)new Map(x[0], x[1]); });
 		auto atom = any(
-			seq(tk!'!', atomBase).map!(x => cast(Ast)new NegativeLookahead(x[1])),
-			seq(tk!'&', atomBase).map!(x => cast(Ast)new PositiveLookahead(x[1])),
-			atomBase
+			seq(tk!'!', mappedAtom).map!(x => cast(Ast)new NegativeLookahead(x[1])),
+			seq(tk!'&', mappedAtom).map!(x => cast(Ast)new PositiveLookahead(x[1])),
+			mappedAtom
 		);
 		auto sequence = atom.array.map!(x => new Sequence(x));
-		alternative = delimited(sequence, stk!'/').skipWs2
+		alternative = delimited(sequence, stk!'/').skipWs
 			.map!(x => cast(Ast)new Alternative(x));
 		auto definitions = seq(
-			identifier.skipWs2, seq(stk!':', identifier.skipWs2).optional, 
-			stk!'>', alternative
+			identifier.skipWs, seq(stk!':', identifier.skipWs).optional,
+			stk!'<', alternative, stk!';'
 		).map!(x => new Definition(x[0], x[1].isNull ? "" : x[1][1], x[3]))
 			.array.skipWs;
-		return definitions;
+		auto grammar = seq(identifier.skipWs, stk!':', definitions)
+			.map!(x => new Grammar(x[0], x[2]));
+		return grammar;
 	}
 }
 
 unittest {
 	import std.stdio;
 	string s = `
-	abc : Type > [0-9]+ ^'a' / 'b' abc
-	def > ^( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ 
+	Test:
+		abc : Type < [0-9]+ ^'a' / 'b' abc { return it; };
+		def < ^( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ ;
 	`;
 	try {
 		prettyPrint(s.parse(pegParser));

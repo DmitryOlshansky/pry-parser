@@ -29,6 +29,13 @@ alias ParserValue(Parser) = Parameters!(Parser.parse)[1];
 /// Extract stream type of a given parser.
 alias ParserStream(Parser) = Parameters!(Parser.parse)[0];
 
+template ParseFailure(S)
+if(is(S == string))
+{
+	import pry.stream;
+	alias ParseFailure = ParseFailure!(SimpleStream!string);
+}
+
 class ParseFailure(S) : Exception 
 if(isStream!S){
 	S.Error err;

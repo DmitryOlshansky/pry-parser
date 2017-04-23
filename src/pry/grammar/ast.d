@@ -15,6 +15,7 @@ class Ast {
 }
 
 abstract class Visitor {
+	void visit(Grammar grammar);
 	void visit(Definition def);
 	void visit(Sequence seq);
 	void visit(Alternative alt);
@@ -33,10 +34,23 @@ mixin template Visitable() {
 	}
 }
 
+class Grammar : Ast {
+	string name;
+	Definition[] defs;
+
+	this(string name, Definition[] defs) {
+		this.name = name;
+		this.defs = defs;
+	}
+	mixin Visitable;
+}
+
 class Definition : Ast {
 	string name;
 	string type;
 	Ast ast;
+  	bool dynamic; // if should be codegened as dynamic!T
+ 
 	this(string name, string type, Ast ast)
 	{
 		this.name = name;

@@ -4,12 +4,20 @@ import pry.stream, pry.traits;
 import std.conv, std.range.primitives;
 
 template parsers(Stream)
+if(is(Stream == string))
+{
+	import pry.stream;
+	alias parsers = parsers!(SimpleStream!string);
+}
+
+template parsers(Stream)
+if(!is(Stream == string))
 {
 	struct Tk(alias c)
 	if(is(typeof(c) : ElementType!Stream)) {
 		static immutable msg = "expected '" ~ to!string(c)~"'";
 
-		bool parse(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err){
+		bool parse(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err) const {
 			if(stream.empty) {
 				err.location = stream.location;
 				err.reason = "unexpected end of stream";
@@ -42,7 +50,7 @@ template parsers(Stream)
 	if(is(typeof(low): ElementType!Stream) && is(typeof(high) : ElementType!Stream)){
 		static immutable msg = "expected in a range of " ~ to!string(low) ~ ".." ~ to!string(high);
 
-		bool parse(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err){
+		bool parse(ref Stream stream, ref ElementType!Stream value, ref Stream.Error err) const {
 			if(stream.empty) {
 				err.location = stream.location;
 				err.reason = "unexpected end of stream";
@@ -66,7 +74,7 @@ template parsers(Stream)
 	auto range(alias low, alias high)(){ return Range!(low, high)(); }
 
 	interface DynamicParser(V) {
-		bool parse(ref Stream stream, ref V value, ref Stream.Error err);
+		bool parse(ref Stream stream, ref V value, ref Stream.Error err) const;
 	}
 
 	// Use LINE & FILE to provide unique types of dynamic.
@@ -79,7 +87,7 @@ template parsers(Stream)
 				wrapped = wrap(parser);
 			}
 
-			bool parse(ref Stream stream, ref V value, ref Stream.Error err){
+			bool parse(ref Stream stream, ref V value, ref Stream.Error err) const {
 				assert(wrapped, "Use of empty dynamic parser");
 				return wrapped.parse(stream, value, err);
 			}
@@ -97,7 +105,7 @@ template parsers(Stream)
 				this.p = p;
 			}
 
-			bool parse(ref Stream stream, ref V value, ref Stream.Error err){
+			bool parse(ref Stream stream, ref V value, ref Stream.Error err) const {
 				return p.parse(stream, value, err);
 			}
 		}
@@ -108,7 +116,7 @@ template parsers(Stream)
 		import std.uni, std.conv;
 		enum val = set.byInterval.length;
 		static if(val <= 6) {
-			mixin(set.toSourceCode("test"));
+			mixin("static " ~ set.toSourceCode("test"));
 		}
 		else {
 			alias Trie = CodepointSetTrie!(13, 8);
@@ -168,7 +176,7 @@ template parsers(Stream)
 			return message;
 		}();
 
-		bool parse(ref Stream stream, ref dchar value, ref Stream.Error err){
+		bool parse(ref Stream stream, ref dchar value, ref Stream.Error err) const {
 			if(stream.empty){
 				err.location = stream.location;
 				err.reason = "unexpected end of stream";
@@ -195,7 +203,7 @@ template parsers(Stream)
 	struct _Literal(alias literal) {
 		static immutable msg = "expected '"~literal~"' literal";
 
-		bool parse(ref Stream stream, ref Stream.Range value, ref Stream.Error err){
+		bool parse(ref Stream stream, ref Stream.Range value, ref Stream.Error err) const {
 			auto m = stream.mark();
 			auto t = literal.save();
 			for(;;) {
