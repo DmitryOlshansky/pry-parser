@@ -59,6 +59,12 @@ class CollectDependencies(T) : Visitor {
       "Undefined non-terminal '"~reference.name~"'");
     deps[reference.name] = defs[reference.name];
   }
+
+  override void visit(Combinator comb) {
+    foreach(ast; comb.args) {
+      ast.accept(this);
+    }
+  }
 }
 
 T[string] collectDependenices(T)(Definition target, T[string] defs) {
@@ -190,7 +196,7 @@ class CodeGen : Visitor {
   override void visit(Grammar g) {
     auto nodes = Graph(g.defs).topologicalSort();
     formattedWrite(app,
-      "immutable %s = (){\nimport pry, std.uni;\nwith(parsers!(%s)){\n",
+      "immutable %s = (){\nimport pry, std.uni, std.typecons;\nwith(parsers!(%s)){\n",
       g.name, streamType);
     foreach(n; nodes) {
       if(!n.def.dynamic) continue;
@@ -228,8 +234,8 @@ class CodeGen : Visitor {
       }
       else {
         formattedWrite(app, ".map!(x => tuple(");
-        foreach(i; liveIdx) {
-          formattedWrite(app, "%sx[%s]", i != 0 ? "," : "", i);
+        foreach(i, index; liveIdx) {
+          formattedWrite(app, "%sx[%s]", i != 0 ? "," : "", index);
         }
         formattedWrite(app, "))");
       }
@@ -308,6 +314,15 @@ class CodeGen : Visitor {
     formattedWrite(app, "%s", reference.name);
     outputModifier(reference.mod);
   }
+
+  override void visit(Combinator comb) {
+    formattedWrite(app, "%s(", comb.combinator);
+    foreach(i, arg; comb.args) {
+      if(i != 0) formattedWrite(app, ",");
+      arg.accept(this);
+    }
+    formattedWrite(app, ")");
+  }
 }
 
 public enum PegOption: uint {
@@ -348,5 +363,18 @@ unittest {
   writeln(grammar(expr, PegOption.skipWhite));
   mixin(grammar(expr, PegOption.skipWhite));
   assert(" ( 2 + 4) * 2".parse(calc) == 12);
+  enum string values = `
+  object:
+    obj <- ((identifier :':' value) $aa(:',' identifier :':' value) ) { 
+      auto aa = it[1];
+      aa[it[0][0]] = it[0][1];
+      return aa;
+    };
+    identifier <- [a-zA-Z_][a-zA-Z0-9_]* ;
+    value <- [0-9]+ { return it.to!int; } ;
+  `;
+  writeln(grammar(values));
+  mixin(grammar(values));
+  assert("abc:90, def:13".parse(object)["abc"] == 90);
 }
 

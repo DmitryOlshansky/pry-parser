@@ -26,6 +26,7 @@ abstract class Visitor {
 	void visit(CharClass charClass);
 	void visit(Literal literal);
 	void visit(Reference refernce);
+	void visit(Combinator combinator);
 }
 
 mixin template Visitable() {
@@ -50,7 +51,7 @@ class Definition : Ast {
 	string type;
 	Ast ast;
   	bool dynamic; // if should be codegened as dynamic!T
- 
+
 	this(string name, string type, Ast ast)
 	{
 		this.name = name;
@@ -126,6 +127,17 @@ class Literal : Ast {
 	string lit;
 
 	this(string literal){ lit = literal; }
+	mixin Visitable;
+}
+
+class Combinator : Ast {
+	string combinator;
+	Ast[] args;
+
+	this(string combinator, Ast[] args) {
+		this.combinator = combinator;
+		this.args = args;
+	}
 	mixin Visitable;
 }
 

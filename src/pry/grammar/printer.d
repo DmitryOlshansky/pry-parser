@@ -77,6 +77,15 @@ class PrettyPrinter : Visitor {
 		writef("%s%s%s", reference.ignored ?  ":" : "", reference.name,
 			modToString(reference.mod));
 	}
+
+	override void visit(Combinator combinator) {
+		writef("$%s(", combinator.combinator);
+		foreach(i, arg; combinator.args) {
+			if(i != 0) write(",");
+			arg.accept(this);
+		}
+		write(")");
+	}
 }
 
 void prettyPrint(Grammar grammar) {

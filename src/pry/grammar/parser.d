@@ -168,7 +168,10 @@ auto pegParser() {
 					auto ast = x[1];
 					if(!x[3].isNull) ast.mod = x[3];
 					return ast;
-				}).skipWs
+				}).skipWs,
+				seq(tk!'$', identifier, stk!'(', 
+					delimited(alternative, stk!','), stk!')' 
+				).map!(x => cast(Ast) new Combinator(x[1], x[3])).skipWs
 			)
 		).map!((x){ if(!x[0].isNull) x[1].ignored = true; return x[1]; });
 		auto mappedAtom = seq(
@@ -199,6 +202,7 @@ unittest {
 	Test:
 		abc : Type <- [0-9]+ :'a' / 'b' abc { return it; };
 		def <- :( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ ;
+		j <- $comb([a-z]+ :':' [0-9]+, 'abc') ;
 	`;
 	try {
 		prettyPrint(s.parse(pegParser));
