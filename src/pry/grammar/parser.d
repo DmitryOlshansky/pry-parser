@@ -122,6 +122,7 @@ struct Balanced {
 		s.popFront();
 		int count = 1;
 		while(!s.empty){
+			//TODO: ignore { and } in D string literals
 			auto c = s.front;
 			if(c == '{') count++;
 			if(c == '}') count--;
@@ -151,7 +152,7 @@ auto pegParser() {
 			literalAtom
 		);
 		auto atomBase = seq(
-			stk!'^'.optional, 
+			stk!':'.optional, 
 			any(
 				seq(simpleAtom, modifier.optional).map!((x){
 					auto ast = x[0];
@@ -183,7 +184,7 @@ auto pegParser() {
 			.map!(x => cast(Ast)new Alternative(x));
 		auto definitions = seq(
 			identifier.skipWs, seq(stk!':', identifier.skipWs).optional,
-			stk!'<', alternative, stk!';'
+			literal!"<-".skipWs, alternative, stk!';'
 		).map!(x => new Definition(x[0], x[1].isNull ? "" : x[1][1], x[3]))
 			.array.skipWs;
 		auto grammar = seq(identifier.skipWs, stk!':', definitions)
@@ -196,8 +197,8 @@ unittest {
 	import std.stdio;
 	string s = `
 	Test:
-		abc : Type < [0-9]+ ^'a' / 'b' abc { return it; };
-		def < ^( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ ;
+		abc : Type <- [0-9]+ :'a' / 'b' abc { return it; };
+		def <- :( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ ;
 	`;
 	try {
 		prettyPrint(s.parse(pegParser));

@@ -24,7 +24,7 @@ class PrettyPrinter : Visitor {
 
 	override void visit(Definition def) {
 		string type = def.type == "" ? "" : format(": %s", def.type);
-		writef("%s %s > ", def.name, type);
+		writef("%s %s <- ", def.name, type);
 		def.ast.accept(this);
 		writeln();
 	}
@@ -34,7 +34,7 @@ class PrettyPrinter : Visitor {
 	}
 
 	override void visit(Alternative alt) {
-		writef("%s(", alt.ignored ? "^" : "");
+		writef("%s(", alt.ignored ? ":" : "");
 		foreach(i, ast; alt.alt) {
 			if(i != 0) write(" / ");
 			ast.accept(this);
@@ -58,13 +58,13 @@ class PrettyPrinter : Visitor {
 	}
 
 	override void visit(SimpleSequence seq) {
-		writef("%s", seq.ignored ? "^" : "");
+		writef("%s", seq.ignored ? ":" : "");
 		foreach(ast; seq.seq)
 			ast.accept(this);
 	}
 
 	override void visit(CharClass charClass) {
-		writef("%s%s%s", charClass.ignored ? "^" : "",
+		writef("%s%s%s", charClass.ignored ? ":" : "",
 			to!string(charClass.set), modToString(charClass.mod));
 	}
 
@@ -74,7 +74,7 @@ class PrettyPrinter : Visitor {
 	}
 
 	override void visit(Reference reference) {
-		writef("%s%s%s", reference.ignored ?  "^" : "", reference.name,
+		writef("%s%s%s", reference.ignored ?  ":" : "", reference.name,
 			modToString(reference.mod));
 	}
 }

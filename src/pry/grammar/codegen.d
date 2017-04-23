@@ -129,9 +129,9 @@ unittest {
   import std.algorithm, std.array;
   Definition[] defs = `
   G:
-    A < 'a' B?;
-    B < 'b' C?;
-    C < 'c' A?;
+    A <- 'a' B?;
+    B <- 'b' C?;
+    C <- 'c' A?;
   `.parse(pegParser).defs;
   auto nodes = Graph(defs).topologicalSort();
   assert(nodes.map!(x => x.def.name).equal(["C", "B", "A"]));
@@ -144,11 +144,11 @@ unittest {
   import std.algorithm, std.array;
   Definition[] defs = `
   G:
-    D < 'd' D?;
-    C < 'c' D;
-    B < 'b' C;
-    A < 'a' B;
-    E < '12';
+    D <- 'd' D?;
+    C <- 'c' D;
+    B <- 'b' C;
+    A <- 'a' B;
+    E <- '12';
   `.parse(pegParser).defs;
   auto nodes = Graph(defs).topologicalSort();
   assert(nodes.map!(x => x.def.name).equal(["D", "C", "B", "A", "E"]));
@@ -332,17 +332,17 @@ public string grammar(S=string)(string peg, PegOption options=PegOption.skipWhit
 unittest {
   enum string expr = `
   calc:
-    expr : int < 
+    expr : int <- 
       (term '+' expr) { return it[0] + it[2]; } 
       / (term '-' expr) { return it[0] - it[2]; }
       / term ;
-    term : int <
+    term : int <-
       (primary '*' term) { return it[0] * it[2]; }
       / (primary '/' term) { return it[0] / it[2]; }
       / primary ;
-    primary < 
+    primary <- 
       [0-9]+ { return to!int(it); } 
-      / ^'(' expr ^')';
+      / :'(' expr :')';
   `;
   import std.stdio, std.conv, pry;
   writeln(grammar(expr, PegOption.skipWhite));
