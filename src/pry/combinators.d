@@ -161,19 +161,37 @@ unittest {
 	}
 }
 
-
-
 struct Seq(P...){
 	alias Stream = ParserStream!(P[0]);
-	alias Values = staticMap!(ParserValue, P);
+	alias Unfiltered = staticMap!(ParserValue, P);
+	alias Values = EraseAll!(Nothing, Unfiltered);
+	enum mapIndex(size_t index) = (){
+		size_t j = 0;
+		foreach(i, Type; Unfiltered[0..index]){
+			static if(!is(Type == Nothing)){
+				j++;
+			}
+		}
+		return j;
+	}();
 	P parsers;
 	
 	bool parse(ref Stream stream, ref Tuple!Values value, ref Stream.Error err) const {
+		Nothing nothing;
 		auto save = stream.mark;
 		foreach(i, ref p; parsers) {
-			if(!p.parse(stream, value[i], err)){
-				stream.restore(save);
-				return false;
+			static if(is(ParserValue!(typeof(p)) == Nothing)) {
+				if(!p.parse(stream, nothing, err)){
+					stream.restore(save);
+					return false;
+				}
+			}
+			else {
+				enum j = mapIndex!i;
+				if(!p.parse(stream, value[j], err)){
+					stream.restore(save);
+					return false;
+				}
 			}
 		}
 		return true;
@@ -209,7 +227,20 @@ unittest {
 	}
 }
 
-struct Nothing{}
+///
+unittest {
+	import pry.atoms, pry.stream;
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = seq(tk!'a', tk!'b', eof);
+		auto s1 = "abc".stream;
+		auto s2 = "ab".stream;
+		S.Error err;
+		Tuple!(dchar, dchar) val;
+		assert(!p.parse(s1, val, err));
+		assert(p.parse(s2, val, err));
+	}
+}
 
 struct TList(T...){}
 
@@ -739,4 +770,62 @@ unittest{
 		assert(p.parse(s, values, err));
 		assert(values == []);
 	}
+}
+
+struct Lookahead(Parser) {
+	Parser parser;
+	alias Stream = ParserStream!Parser;
+	alias Value = ParserValue!Parser;
+
+	bool parse(ref Stream stream, ref Nothing _, ref Stream.Error err) const {
+		auto m = stream.mark();
+		Value val;
+		bool r = parser.parse(stream, val, err);
+		stream.restore(m);
+		return r;
+	}
+}
+
+/// Use Parser as lookahead, doesn't consume input stream. 
+auto lookahead(Parser)(Parser p)
+if(isParser!Parser){
+	return Lookahead!Parser(p);
+}
+
+struct NegLookahead(Parser) {
+	Parser parser;
+	alias Stream = ParserStream!Parser;
+	alias Value = ParserValue!Parser;
+
+	bool parse(ref Stream stream, ref Nothing _, ref Stream.Error err) const {
+		auto m = stream.mark();
+		Value val;
+		bool r = !parser.parse(stream, val, err);
+		stream.restore(m);
+		return r;
+	}
+}
+
+/// Use Parser as lookahead, doesn't consume input stream. 
+auto negLookahead(Parser)(Parser p)
+if(isParser!Parser){
+	return NegLookahead!Parser(p);
+}
+
+unittest {
+	import pry.atoms, pry.stream, std.conv;
+	alias S = SimpleStream!string;
+	with(parsers!S){
+		auto p1 = seq(tk!'a', tk!'b'.lookahead);
+		auto s1 = "ab".stream;
+		Tuple!dchar val;
+		S.Error err;
+		assert(p1.parse(s1, val, err));
+		assert(val[0] == 'a');
+		auto p2 = seq(tk!'a', tk!'b'.negLookahead);
+		s1 = "ab".stream;
+		assert(!p2.parse(s1, val, err));
+		auto s2 = "ac".stream;
+		assert(p2.parse(s2, val, err));
+	}	
 }

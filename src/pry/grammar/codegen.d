@@ -326,6 +326,7 @@ class CodeGen : Visitor {
 }
 
 public enum PegOption: uint {
+  none = 0,
   skipWhite = 1
 };
 

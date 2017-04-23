@@ -234,6 +234,23 @@ if(!is(Stream == string))
 	&& is(ElementType!(typeof(lit)) : ElementType!(Stream.Range))) {
 		return _Literal!lit();
 	}
+
+	struct Eof {
+		bool parse(ref Stream stream, ref Nothing _, ref Stream.Error err) const {
+			bool r =  stream.empty;
+			if(!r) {
+				err.location = stream.location;
+				err.reason = "input not fully consumed";
+			}
+			return r;
+		}
+	}
+
+	/// Zero-width assertion that parses successfully on input end.
+	/// Use to make sure the whole stream was consumed.
+	auto eof(){
+		return Eof();
+	}
 }
 
 unittest {
@@ -307,5 +324,16 @@ unittest {
 		s = "abd".stream;
 		assert(!p.parse(s, slice, err));
 		assert(s.front == 'a');
+	}
+}
+
+unittest {
+	alias S = SimpleStream!string;
+	with(parsers!S) {
+		auto p = eof;
+		Nothing n;
+		S.Error err;
+		auto s = "".stream;
+		assert(p.parse(s, n, err));
 	}
 }

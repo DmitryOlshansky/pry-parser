@@ -190,7 +190,7 @@ auto pegParser() {
 			literal!"<-".skipWs, alternative, stk!';'
 		).map!(x => new Definition(x[0], x[1].isNull ? "" : x[1][1], x[3]))
 			.array.skipWs;
-		auto grammar = seq(identifier.skipWs, stk!':', definitions)
+		auto grammar = seq(identifier.skipWs, stk!':', definitions, eof.skipWs)
 			.map!(x => new Grammar(x[0], x[2]));
 		return grammar;
 	}
@@ -202,12 +202,12 @@ unittest {
 	Test:
 		abc : Type <- [0-9]+ :'a' / 'b' abc { return it; };
 		def <- :( '456' abc ){2} '90' !([a-c][d-f])[a-z]+ ;
-		j <- $comb([a-z]+ :':' [0-9]+, 'abc') ;
+		j <- $comb([a-z]+ :':' [0-9]+, 'abc');
 	`;
 	try {
 		prettyPrint(s.parse(pegParser));
 	}
 	catch(ParseFailure!Stream ex){
-		writeln(s[ex.err.location .. $]);
+		writeln(ex.err.reason, ":", s[ex.err.location .. $]);
 	}
 }

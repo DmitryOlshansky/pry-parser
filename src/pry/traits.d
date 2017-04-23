@@ -29,6 +29,10 @@ alias ParserValue(Parser) = Parameters!(Parser.parse)[1];
 /// Extract stream type of a given parser.
 alias ParserStream(Parser) = Parameters!(Parser.parse)[0];
 
+/// Parsers that have `ParserValue` of Nothing produce no value on parse.
+struct Nothing{}
+
+/// ParseFailure!string is shortcut for ParseFailure!(SimpleStream!string).
 template ParseFailure(S)
 if(is(S == string))
 {
@@ -36,6 +40,7 @@ if(is(S == string))
 	alias ParseFailure = ParseFailure!(SimpleStream!string);
 }
 
+/// Generic parse failure exception.
 class ParseFailure(S) : Exception 
 if(isStream!S){
 	S.Error err;
