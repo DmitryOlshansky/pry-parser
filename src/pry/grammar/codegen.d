@@ -342,7 +342,7 @@ unittest {
       / primary ;
     primary < 
       [0-9]+ { return to!int(it); } 
-      / ('(' expr ')') { return it[1]; };
+      / ^'(' expr ^')';
   `;
   import std.stdio, std.conv, pry;
   writeln(grammar(expr, PegOption.skipWhite));

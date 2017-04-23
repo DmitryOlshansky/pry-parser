@@ -151,7 +151,7 @@ auto pegParser() {
 			literalAtom
 		);
 		auto atomBase = seq(
-			tk!'^'.optional, 
+			stk!'^'.optional, 
 			any(
 				seq(simpleAtom, modifier.optional).map!((x){
 					auto ast = x[0];
