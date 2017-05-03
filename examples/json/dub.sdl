@@ -6,3 +6,15 @@ dependency "pry" path="../.."
 dependency "std_data_json" version="~>0.18.2"
 dependency "taggedalgebraic" version="~>0.10.1"
 license "BSL-1.0"
+
+configuration "std_json"{
+	versions "std_json"
+}
+
+configuration "stdx_data_json"{
+	versions "stdx_data_json"
+}
+
+configuration "pry"{
+	versions "pry"
+}

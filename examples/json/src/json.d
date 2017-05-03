@@ -149,13 +149,22 @@ void main(string[] argv){
 	if(argv.length != 2) return usage();
 	const iterations = 1_000;
 	string data = cast(string)file.read(argv[1]);
-	auto results = benchmark!(
-		() => parseStd(data),
-		() => parsePry(data),
-		() => parseDataJson(data)
-	)(iterations);
-	writefln("std.json: %s us\npry: %s us\nstdx.data.json %s us\n",
-		results[0].usecs / cast(double)iterations,
-		results[1].usecs / cast(double)iterations,
-		results[2].usecs / cast(double)iterations);
+	version(std_json){
+		string name = "std.json";
+		auto dg = () => parseStd(data);
+	}
+	else version(pry){
+		string name = "pry";
+		auto dg = () => parsePry(data);
+	}
+	else version(stdx_data_json){
+		string name = "stdx.data.json";
+		auto dg = () => parseDataJson(data);
+	}
+	else {
+		static assert(false, "define one version of std_json, pry, stdx_data_json");
+	}
+	auto results = benchmark!(dg)(iterations);
+	writefln("%s: %s us", name,
+		results[0].usecs / cast(double)iterations);
 }
