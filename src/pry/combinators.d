@@ -21,7 +21,10 @@ public struct Nullable(T){
 
 	void nullify(){
 		isNull = true;
-		value = T.init;
+		static if(is(T == struct))
+			value.tupleof = T.init.tupleof;
+		else
+			value = T.init;
 	}
 
 	alias value this;
