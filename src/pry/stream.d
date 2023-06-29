@@ -29,6 +29,10 @@ public:
 
 	@property bool empty(){ return _index == _range.length; }
 
+	SimpleStream!S save() {
+		return SimpleStream!S(_range);
+	}
+
 	S slice(size_t i){ return _range[i .. _index]; }
 
 	size_t mark(){ return _index; }
