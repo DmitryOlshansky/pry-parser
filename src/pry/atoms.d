@@ -1,7 +1,7 @@
 module pry.atoms;
 
 import pry.stream, pry.traits;
-import std.conv, std.range.primitives;
+import std.conv, std.range.primitives, std.uni, std.conv;
 
 template parsers(Stream)
 if(is(Stream == string))
@@ -112,67 +112,67 @@ if(!is(Stream == string))
 		return new Wrapped(parser);
 	}
 
-	struct Set(alias set) {
-		import std.uni, std.conv;
-		enum val = set.byInterval.length;
-		static if(val <= 6) {
-			mixin("static " ~ set.toSourceCode("test"));
+	struct Set {
+		CodepointSet set;
+		size_t val;
+		CharMatcher matcher;
+		
+		alias Trie = CodepointSetTrie!(13, 8);
+		alias makeTrie = codepointSetTrie!(13, 8);
+
+		this(CodepointSet set) {
+			this.set = set;
+			val = set.byInterval.length;
+			matcher = CharMatcher(set);
 		}
-		else {
-			alias Trie = CodepointSetTrie!(13, 8);
-			alias makeTrie = codepointSetTrie!(13, 8);
 
-			static struct BitTable {
-				uint[4] table;
+		static struct BitTable {
+			uint[4] table;
 
-				this(CodepointSet set){
-					foreach (iv; set.byInterval)
-					{
-						foreach (v; iv.a .. iv.b)
-							add(v);
-					}
-				}
-
-				void add()(dchar ch){
-					immutable i = ch & 0x7F;
-					table[i >> 5]  |=  1<<(i & 31);
-				}
-
-				bool opIndex()(dchar ch) const{
-					immutable i = ch & 0x7F;
-					return (table[i >> 5]>>(i & 31)) & 1;
+			this(CodepointSet set){
+				foreach (iv; set.byInterval)
+				{
+					foreach (v; iv.a .. iv.b)
+						add(v);
 				}
 			}
 
-			static struct CharMatcher {
-				BitTable ascii; // fast path for ASCII
-				Trie trie;	  // slow path for Unicode
-
-				this(CodepointSet set){
-					auto asciiSet = set & unicode.ASCII;
-					ascii = BitTable(asciiSet);
-					trie = makeTrie(set);
-				}
-
-				bool opIndex()(dchar ch) const{
-					if (ch < 0x80)
-						return ascii[ch];
-					else
-						return trie[ch];
-				}
+			void add()(dchar ch){
+				immutable i = ch & 0x7F;
+				table[i >> 5]  |=  1<<(i & 31);
 			}
 
-			static immutable matcher = CharMatcher(set);
-
-			static bool test(dchar ch){
-				return matcher[ch];
+			bool opIndex()(dchar ch) const{
+				immutable i = ch & 0x7F;
+				return (table[i >> 5]>>(i & 31)) & 1;
 			}
 		}
 
-		static immutable string msg = (){
+		static struct CharMatcher {
+			BitTable ascii; // fast path for ASCII
+			Trie trie;	  // slow path for Unicode
+
+			this(CodepointSet set){
+				auto asciiSet = set & unicode.ASCII;
+				ascii = BitTable(asciiSet);
+				trie = makeTrie(set);
+			}
+
+			bool opIndex()(dchar ch) const{
+				if (ch < 0x80)
+					return ascii[ch];
+				else
+					return trie[ch];
+			}
+		}
+
+		bool test(dchar ch) const {
+			return matcher[ch];
+		}
+
+		immutable string msg = (){
 			import std.format;
-			string message = "expected one of ";
-			set.toString((const(char)[] s){ message ~= s; }, FormatSpec!char("%x"));
+			string message = "expected one of";
 			return message;
 		}();
 
@@ -182,7 +182,7 @@ if(!is(Stream == string))
 				err.reason = "unexpected end of stream";
 				return false;
 			}
-			immutable c = stream.front;
+			const c = stream.front;
 			if(test(c)){
 				value = stream.front;
 				stream.popFront();
@@ -194,13 +194,12 @@ if(!is(Stream == string))
 		}
 	}
 
-	auto set(alias s)(){
-		import std.uni;
-		static assert(isCodepointSet!(typeof(s)), "set only works with std.uni.CodepointSet");
-		return Set!s();
+	auto set(CodepointSet set){
+		static assert(isCodepointSet!(typeof(set)), "set only works with std.uni.CodepointSet");
+		return Set(set);
 	}
 
-	struct _Literal(alias literal) {
+	struct Literal(alias literal) {
 		static immutable msg = "expected '"~literal~"' literal";
 
 		bool parse(ref Stream stream, ref Stream.Range value, ref Stream.Error err) const {
@@ -232,7 +231,7 @@ if(!is(Stream == string))
 	auto literal(alias lit)()
 	if(isForwardRange!(typeof(lit))
 	&& is(ElementType!(typeof(lit)) : ElementType!(Stream.Range))) {
-		return _Literal!lit();
+		return Literal!lit();
 	}
 
 	struct Eof {
@@ -289,7 +288,7 @@ unittest {
 	import std.uni;
 	alias S = SimpleStream!string;
 	with(parsers!S) {
-		auto p = set!(CodepointSet('A', 'Z'+1, 'a', 'z'+1));
+		auto p = set(CodepointSet('A', 'Z'+1, 'a', 'z'+1));
 		auto s = "aZ0".stream;
 		dchar c;
 		S.Error err;
@@ -299,7 +298,7 @@ unittest {
 		assert(c == 'Z');
 		assert(!p.parse(s, c, err));
 		assert(s.front == '0');
-		auto p2 = set!(unicode.L);
+		auto p2 = set(unicode.L);
 		s = "Яz".stream;
 		assert(p2.parse(s, c, err));
 		assert(c == 'Я');

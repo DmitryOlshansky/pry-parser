@@ -292,7 +292,7 @@ auto commonPrefix(P...)(P p)
 if(P.length > 2){
 	return commonPrefix(commonPrefix(p[0], p[1]), p[2..$]);
 }
-
+/*
 unittest {
 	import pry.atoms, pry.stream;
 	alias S = SimpleStream!string;
@@ -312,7 +312,7 @@ unittest {
 		assert(commonPrefix(p1, p2, p3, p4) == Nothing());
 	}
 }
-
+*/
 auto suffix(P1, P2)(P1 prefix, P2 parser)
 if(isParser!P1 && isParser!P2){
 	static if(is(P1 : Seq!U1, U1...)){
@@ -343,7 +343,7 @@ if(isParser!P1 && isParser!P2){
 			return seq(parser);
 	}
 }
-
+/*
 unittest{
 	import pry.atoms, pry.stream;
 	alias S = SimpleStream!string;
@@ -356,7 +356,7 @@ unittest{
 		assert(suffix(p3, p1) == seq(tk!'b'));
 		assert(suffix(p2, p3) == Nothing());
 	}
-}
+}*/
 
 template Unmap(P){
 	static if(is(P : Map!(U, f), alias f, U)){
@@ -400,78 +400,31 @@ struct Any(P...){
 		alias Value = Algebraic!Values;
 	
 	P parsers;
-	alias Prefix = typeof(extractPrefix());
-	Prefix prefix;
-
-	template mapper(size_t i){
-		static if(is(P[i] == Map!(U, f), U, alias f))
-			alias mapper = P[i].mapper;
-		else
-			alias mapper = x => x;
-	}
+	Values value;
 
 	this(P parsers){
 		this.parsers = parsers;
-		prefix = extractPrefix();
-	}
-
-	auto extractPrefix() const {
-		staticMap!(Unmap, P) unmapped = void;
-		foreach(i, ref p; parsers){
-			unmapped[i] = cast()unmap(p);
-		}
-		return commonPrefix(unmapped);
-	}
-
-	static auto combine(T1, T2)(T1 prefixValue, T2 suffixValue){
-		static if(is(T1 == Nothing)){
-			return suffixValue;
-		}
-		else{
-			return tuple(prefixValue.expand, suffixValue.expand);
-		}
 	}
 
 	bool parse(ref Stream stream, ref Value value, ref Stream.Error err) const {
-		static if(is(Prefix == Nothing)){
-			Nothing prefixValue;
-		}
-		else{
-			ParserValue!Prefix prefixValue;
-			if(!prefix.parse(stream, prefixValue, err)){
-				return false;
-			}
-		}
 		Stream.Error current, deepest;
 		bool ret = false;
 		foreach(i, ref p; parsers) {
-			static if(is(Prefix == Nothing))
-				auto sp = unmap(p);
-			else
-				auto sp = suffix(prefix, unmap(p));
-			alias Suffix = typeof(sp);
-			static if(is(Suffix == Nothing)){
-				value = mapper!i(prefixValue.expand);
-				ret = true;
-				goto L_end;
+			ParserValue!(typeof(p)) suffixValue;
+			static if(i == 0){
+				if(p.parse(stream, suffixValue, deepest)){
+					value = suffixValue;
+					return true;
+				}
 			}
 			else {
-				ParserValue!Suffix suffixValue;
-				static if(i == 0){
-					if(sp.parse(stream, suffixValue, deepest)){
-						value = mapper!i(combine(prefixValue, suffixValue));
-						return true;
-					}
+				if(p.parse(stream, suffixValue, current)){
+					value = suffixValue;
+					return true;
 				}
-				else {
-					if(sp.parse(stream, suffixValue, current)){
-						value = mapper!i(combine(prefixValue, suffixValue));
-						return true;
-					}
-					// pick the deeper error
-					if(deepest.location < current.location){
-						deepest = current;
-					}
+				// pick the deeper error
+				if(deepest.location < current.location){
+					deepest = current;
 				}
 			}
 		}

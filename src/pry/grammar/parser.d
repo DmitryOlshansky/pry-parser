@@ -67,7 +67,7 @@ auto literalAtom(){
 		auto p = seq(
 			tk!'\'',
 			any(
-				set!notQuote, 
+				set(notQuote), 
 				seq(tk!'\\', any(
 					tk!'"',
 					tk!'\'',
@@ -78,12 +78,12 @@ auto literalAtom(){
 					tk!'n'.map!(_ => cast(dchar)'\n'),
 					tk!'r'.map!(_ => cast(dchar)'\r'),
 					tk!'t'.map!(_ => cast(dchar)'\t'),
-					seq(tk!'x', set!hex.rep!(2,2)).map!(x => cast(dchar)to!int(x[1], 16)),
-					seq(tk!'u', set!hex.rep!(4,4)).map!(x => cast(dchar)to!int(x[1], 16))
+					seq(tk!'x', set(hex).rep!(2,2)).map!(x => cast(dchar)to!int(x[1], 16)),
+					seq(tk!'u', set(hex).rep!(4,4)).map!(x => cast(dchar)to!int(x[1], 16))
 				)).map!(x => x[1])
 			).utfString!(char, 0),
 			tk!'\''
-		).map!(x => cast(Ast)new Literal(x[1]));
+		).map!(x => cast(Ast)new pry.grammar.ast.Literal(x[1]));
 		return p;
 	}
 }
@@ -94,10 +94,10 @@ unittest {
 }
 
 auto identifier(){
-	enum start = CodepointSet('a', 'z'+1, 'A', 'Z'+1, '_', '_'+1);
-	enum end = CodepointSet('a', 'z'+1, 'A', 'Z'+1, '0', '9'+1, '_', '_'+1);
+	auto start = CodepointSet('a', 'z'+1, 'A', 'Z'+1, '_', '_'+1);
+	auto end = CodepointSet('a', 'z'+1, 'A', 'Z'+1, '0', '9'+1, '_', '_'+1);
 	with(parsers!Stream) {
-		return seq(set!start, set!end.rep!0).slice;
+		return seq(set(start), set(end).rep!0).slice;
 	}
 }
 

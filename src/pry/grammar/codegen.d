@@ -287,7 +287,7 @@ class CodeGen : Visitor {
   }
 
   override void visit(CharClass charClass) {
-    formattedWrite(app, "set!(CodepointSet(");
+    formattedWrite(app, "set(CodepointSet(");
     bool first = true;
     foreach(ival; charClass.set.byInterval) {
       formattedWrite(app, "%s%s,%s", first ? "" : ",", ival.a, ival.b);

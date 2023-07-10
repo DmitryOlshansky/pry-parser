@@ -35,6 +35,11 @@ public:
 
 	void restore(size_t i){ _index = i; }
 
+	SimpleStream save() {
+		auto t = this;
+		return t;
+	}
+
 	@property size_t location() {
 		return _index;
 	}
